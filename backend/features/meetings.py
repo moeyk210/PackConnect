@@ -5,8 +5,8 @@ from functools import wraps
 
 from flask import Blueprint, Response, jsonify, request, session
 from psycopg.errors import UniqueViolation
-from identity import session_student_id
-from lifecycle import blocked, lock_students, notify
+from core.identity import session_student_id
+from features.lifecycle import blocked, lock_students, notify
 
 
 def calendar_escape(value):

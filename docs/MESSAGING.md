@@ -1,7 +1,7 @@
 # Advice requests and private conversations
 
 All messaging storage is in Supabase PostgreSQL. Configure `SUPABASE_DB_URL`,
-apply migrations with `python backend/migrate.py`, then restart Flask.
+apply migrations with `python backend/scripts/migrate.py`, then restart Flask.
 Request/message writes and their notifications commit in the same transaction.
 See [database setup and verification](SUPABASE.md).
 

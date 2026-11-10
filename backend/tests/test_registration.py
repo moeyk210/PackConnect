@@ -2,7 +2,7 @@ import unittest
 
 from werkzeug.security import check_password_hash
 import app as portal
-from postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase
 
 
 class RegistrationTests(PostgresTestCase):

@@ -5,9 +5,9 @@ from functools import wraps
 from contextlib import nullcontext
 
 from flask import Blueprint, g, jsonify, request, session
-from identity import registered_student_sql, session_student_id
-from availability import advisor_availability
-from lifecycle import blocked, expire_requests, lock_students, notify
+from core.identity import registered_student_sql, session_student_id
+from features.availability import advisor_availability
+from features.lifecycle import blocked, expire_requests, lock_students, notify
 
 
 def initialize_messaging(db):

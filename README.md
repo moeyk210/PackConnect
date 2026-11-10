@@ -61,9 +61,13 @@ including SMTP configuration and moderator assignment.
 ```text
 PackConnect/
 ├── backend/
-│   ├── app.py             # Flask API and database initialization
-│   ├── database.py        # Transactional Supabase PostgreSQL connections
-│   └── migrate.py         # Explicit versioned schema migrations
+│   ├── app.py             # Flask API entry point and database initialization
+│   ├── requirements.txt
+│   ├── core/              # Shared infrastructure: database connections, session identity
+│   ├── features/          # Feature modules: messaging, availability, lifecycle,
+│   │                      #   community, meetings, password recovery
+│   ├── scripts/           # Command-line tasks: schema migrations, request expiry
+│   └── tests/             # Backend test suite and shared test support
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx        # Search and student profile UI
@@ -125,7 +129,7 @@ Configure `backend/.env` using [the Supabase setup instructions](docs/SUPABASE.m
 Apply migrations, then start Flask:
 
 ```powershell
-python backend/migrate.py
+python backend/scripts/migrate.py
 python backend/app.py
 ```
 
@@ -188,7 +192,7 @@ Quick browser checks:
 
 ### Account registration
 
-Apply migrations with `python backend/migrate.py`, then restart the backend. Click **Create account** in the frontend header. Enter your name, email, a password of 12–128 characters, program, and year. Optional fields include bio, interests, and comma-separated completed courses. Opt in to advising to appear in searches for those courses.
+Apply migrations with `python backend/scripts/migrate.py`, then restart the backend. Click **Create account** in the frontend header. Enter your name, email, a password of 12–128 characters, program, and year. Optional fields include bio, interests, and comma-separated completed courses. Opt in to advising to appear in searches for those courses.
 
 The registration API accepts `name`, `email`, `password`, `program`, and `year`, plus optional `bio`, `interests`, `completed_courses` (an array of course codes), and `willing_to_advise` (a boolean, defaulting to false). Email uniqueness ignores case. Account and profile creation are transactional. After registration, sign in on the login page. Email verification is not yet implemented. Course completion is self-reported.
 
@@ -263,7 +267,7 @@ Open a pull request on GitHub for team review before merging into `main`.
 
 Set `SUPABASE_DB_URL` in `backend/.env` to the PostgreSQL **Session pooler**
 connection string from Supabase's Connect panel, including the database password.
-Run `python backend/migrate.py` before starting Flask. `SUPABASE_URL` and
+Run `python backend/scripts/migrate.py` before starting Flask. `SUPABASE_URL` and
 `SUPABASE_SECRET_KEY` configure the optional SDK used by live integration tests;
 they are separate from the database connection string.
 

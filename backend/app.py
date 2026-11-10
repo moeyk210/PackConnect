@@ -7,14 +7,14 @@ from psycopg.errors import UniqueViolation
 import re
 from werkzeug.security import generate_password_hash, check_password_hash
 from pathlib import Path
-from messaging import create_messaging_blueprint, initialize_messaging
-from database import connect_database
-from identity import registered_student_sql, session_student_id
-from community import create_community_blueprint
-from meetings import create_meetings_blueprint
-from recovery import create_recovery_blueprint
-from lifecycle import lock_students
-from availability import availability_payload, workload_join, availability_columns, availability_status_sql
+from features.messaging import create_messaging_blueprint, initialize_messaging
+from core.database import connect_database
+from core.identity import registered_student_sql, session_student_id
+from features.community import create_community_blueprint
+from features.meetings import create_meetings_blueprint
+from features.recovery import create_recovery_blueprint
+from features.lifecycle import lock_students
+from features.availability import availability_payload, workload_join, availability_columns, availability_status_sql
 
 import os
 import secrets

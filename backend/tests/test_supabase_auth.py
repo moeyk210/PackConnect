@@ -10,7 +10,7 @@ from supabase_auth import SyncGoTrueClient
 from supabase_auth.errors import AuthApiError
 
 import app as portal
-from postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase
 
 
 class SupabaseAuthenticationTests(PostgresTestCase):
