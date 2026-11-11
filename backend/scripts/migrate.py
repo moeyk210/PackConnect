@@ -22,6 +22,14 @@ def migration_sql(path):
                      if line.strip() not in ("BEGIN;", "COMMIT;"))
 
 
+def migration_digests(path):
+    """Return (LF digest, accepted digests) so CRLF and LF checkouts match."""
+    lf = path.read_bytes().replace(b"\r\n", b"\n")
+    crlf = lf.replace(b"\n", b"\r\n")
+    digest = hashlib.sha256(lf).hexdigest()
+    return digest, {digest, hashlib.sha256(crlf).hexdigest()}
+
+
 def apply_migrations(database_url):
     completed = []
     with connect_database(database_url) as db:
@@ -38,9 +46,9 @@ def apply_migrations(database_url):
         applied = {row["name"]: row["sha256"] for row in
                    db.execute("SELECT name, sha256 FROM public.packconnect_migrations")}
         for path in sorted(MIGRATIONS.glob("*.sql")):
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            digest, accepted = migration_digests(path)
             if path.name in applied:
-                if applied[path.name] != digest:
+                if applied[path.name] not in accepted:
                     raise RuntimeError(f"Applied migration changed: {path.name}")
                 continue
             db.execute(migration_sql(path), prepare=False)
