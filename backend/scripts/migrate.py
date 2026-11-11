@@ -1,15 +1,19 @@
-"""Apply versioned SQL migrations explicitly: python backend/migrate.py."""
+"""Apply versioned SQL migrations explicitly: python backend/scripts/migrate.py."""
 
 import hashlib
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from database import connect_database
+# Direct runs put only scripts/ on the path; backend modules live one level up.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from core.database import connect_database
 
 
-MIGRATIONS = Path(__file__).resolve().parents[1] / "supabase" / "migrations"
+MIGRATIONS = Path(__file__).resolve().parents[2] / "supabase" / "migrations"
 
 
 def migration_sql(path):
@@ -50,7 +54,7 @@ def apply_migrations(database_url):
 
 
 if __name__ == "__main__":
-    load_dotenv(Path(__file__).parent / ".env")
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     try:
         apply_migrations(os.getenv("SUPABASE_DB_URL"))
     except Exception as exc:

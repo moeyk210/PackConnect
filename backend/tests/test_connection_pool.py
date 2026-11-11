@@ -1,8 +1,8 @@
 """Connection reuse must preserve transaction and schema boundaries."""
 
 import app as portal
-from database import connect_database
-from postgres_test_support import PostgresTestCase
+from core.database import connect_database
+from tests.postgres_test_support import PostgresTestCase
 
 
 class ConnectionPoolTests(PostgresTestCase):

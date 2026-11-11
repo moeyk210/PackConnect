@@ -13,7 +13,7 @@ from flask import Blueprint, current_app, jsonify, request
 from supabase import create_client
 from supabase.lib.client_options import SyncClientOptions
 from werkzeug.security import generate_password_hash
-from lifecycle import lock_students
+from features.lifecycle import lock_students
 
 
 def send_recovery_email(email, link):

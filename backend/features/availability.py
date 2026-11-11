@@ -1,7 +1,7 @@
 """Advisor settings and shared, database-time availability calculations."""
 
 from datetime import date
-from identity import registered_student_sql
+from core.identity import registered_student_sql
 
 
 def availability_payload(data):

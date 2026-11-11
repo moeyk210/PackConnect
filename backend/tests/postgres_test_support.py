@@ -9,8 +9,8 @@ from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict
 
 import app as portal
-from migrate import MIGRATIONS, migration_sql
-from test_seeds import seed_students
+from scripts.migrate import MIGRATIONS, migration_sql
+from tests.test_seeds import seed_students
 
 
 class PostgresTestCase(unittest.TestCase):

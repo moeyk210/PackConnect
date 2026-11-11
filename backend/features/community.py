@@ -3,8 +3,8 @@
 from functools import wraps
 
 from flask import Blueprint, jsonify, request, session
-from identity import session_student_id
-from lifecycle import blocked, expire_requests, lock_students
+from core.identity import session_student_id
+from features.lifecycle import blocked, expire_requests, lock_students
 
 
 def create_community_blueprint(get_db):

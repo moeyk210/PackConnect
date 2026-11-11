@@ -21,7 +21,7 @@ server-side and out of Git.
 From the repository root:
 
 ```sh
-.venv/bin/python backend/migrate.py
+.venv/bin/python backend/scripts/migrate.py
 .venv/bin/python backend/app.py
 ```
 

@@ -1,7 +1,7 @@
 """Search behavior against independent fictional profiles in PostgreSQL."""
 
 import app as portal
-from postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase
 
 
 class SearchTests(PostgresTestCase):

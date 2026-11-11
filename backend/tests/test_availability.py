@@ -5,7 +5,7 @@ from datetime import timedelta
 from threading import Barrier
 
 import app as portal
-from postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase
 
 
 class AdvisorAvailabilityTests(PostgresTestCase):

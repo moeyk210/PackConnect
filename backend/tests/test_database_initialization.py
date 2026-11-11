@@ -1,7 +1,7 @@
 import app as portal
 from psycopg import IntegrityError
-from migrate import MIGRATIONS, migration_sql
-from postgres_test_support import PostgresTestCase
+from scripts.migrate import MIGRATIONS, migration_sql
+from tests.postgres_test_support import PostgresTestCase
 
 
 class DatabaseInitializationTests(PostgresTestCase):

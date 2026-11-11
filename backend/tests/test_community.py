@@ -6,8 +6,8 @@ import os
 from unittest.mock import patch
 
 import app as portal
-from lifecycle import expire_requests
-from postgres_test_support import PostgresTestCase
+from features.lifecycle import expire_requests
+from tests.postgres_test_support import PostgresTestCase
 
 
 class CommunityTests(PostgresTestCase):
@@ -291,7 +291,7 @@ class CommunityTests(PostgresTestCase):
             "PUBLIC_APP_URL": "https://pack.example.test",
         }
         self.enterContext(patch.dict(os.environ, config))
-        self.mail = self.enterContext(patch("recovery.send_recovery_email"))
+        self.mail = self.enterContext(patch("features.recovery.send_recovery_email"))
         response = self.alice.post(
             "/api/auth/forgot-password", json={"email": "alice@example.test"}
         )
@@ -432,7 +432,7 @@ class CommunityTests(PostgresTestCase):
 
         self.addCleanup(cleanup)
         token = self.recovery_link()
-        with patch("recovery.update_provider_password") as provider:
+        with patch("features.recovery.update_provider_password") as provider:
             response = portal.app.test_client().post(
                 "/api/auth/reset-password",
                 json={"token": token, "password": "a new provider password"},
