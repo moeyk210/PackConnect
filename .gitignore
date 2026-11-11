@@ -23,3 +23,6 @@ dist/
 .vite/
 
 env
+
+# macOS
+.DS_Store
