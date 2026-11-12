@@ -20,6 +20,9 @@ original Project 2 team is not tracked here.
 - Assessing the inherited code and planning the Project 3 milestones
 - Restructuring the backend without changing its behavior (see
   [01-backend-reorganization](artifacts/01-backend-reorganization.md))
+- Planning and building a feature from a GitHub issue, with tests in each
+  commit (see
+  [02-advice-outcomes-reputation](artifacts/02-advice-outcomes-reputation.md))
 - _TODO: add as the project goes (e.g. first drafts of tests, PR review)_
 
 ## What we do not use AI for
@@ -47,3 +50,4 @@ original Project 2 team is not tracked here.
 | # | Artifact | Author | Date |
 |---|---|---|---|
 | 01 | [Backend file reorganization](artifacts/01-backend-reorganization.md) | Moe Ko | 2026-11-10 |
+| 02 | [Advice outcomes and reputation (issue #2)](artifacts/02-advice-outcomes-reputation.md) | Moe Ko | 2026-11-12 |

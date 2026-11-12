@@ -3,6 +3,7 @@ import { api, json } from './messagingApi'
 import './Messaging.css'
 import MeetingPanel from './MeetingPanel'
 import { ReportForm } from './Community'
+import { ConversationFeedback } from './FeedbackPanel'
 
 export function ConnectionRequestForm({
   student,
@@ -427,6 +428,12 @@ export function Conversation({ requestId, user }) {
               ))
             )}
           </div>
+          <ConversationFeedback
+            requestId={requestId}
+            record={record}
+            messages={messages}
+            peerName={peerName}
+          />
           {['completed', 'closed'].includes(record.status) ||
           record.contact_allowed === false ? (
             <p role="status">

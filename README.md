@@ -41,6 +41,7 @@ See the [Step 1 baseline audit](docs/STEP_1_AUDIT.md) for verified behavior, lim
 - Store accounts, profiles, courses, requests, chat, and notifications in Supabase PostgreSQL.
 - Get in-app bell notifications for incoming requests, request decisions, and new chat messages. Read/unread state is saved per account.
 - Chat privately after acceptance. Both participants can send messages of up to 2,000 characters, and conversations persist across visits. Open chats refresh every three seconds.
+- Rate a conversation from 1 to 10, say whether the advice was helpful, and add an optional comment, once both people have sent a message. Search cards and profiles show each advisor's average rating, students helped, and response rate. See [feedback, reputation, and the M0 eval](#advice-feedback-reputation-and-m0-eval).
 
 New request and community tools include cancellation, seven-day expiration,
 a conversation inbox, block/report controls with moderator review, password
@@ -66,7 +67,8 @@ PackConnect/
 │   ├── core/              # Shared infrastructure: database connections, session identity
 │   ├── features/          # Feature modules: messaging, availability, lifecycle,
 │   │                      #   community, meetings, password recovery
-│   ├── scripts/           # Command-line tasks: schema migrations, request expiry
+│   ├── scripts/           # Command-line tasks: migrations, request expiry,
+│   │                      #   demo seed data, M0 eval
 │   └── tests/             # Backend test suite and shared test support
 ├── frontend/
 │   ├── src/
@@ -103,7 +105,7 @@ git --version
 ### 1. Clone the repository
 
 ```powershell
-git clone https://github.com/kkattili_ncstate/PackConnect.git
+git clone https://github.com/moeyk210/PackConnect.git
 cd PackConnect
 ```
 
@@ -183,6 +185,8 @@ Open that URL in your browser. **The frontend is the actual website; port 5000 s
 | GET / POST | `/api/requests` | List your requests or create one for another registered advisor |
 | PATCH | `/api/requests/1` | Recipient accepts/declines a pending request |
 | GET / POST | `/api/requests/1/messages` | Read/send messages after acceptance; participants only |
+| GET / POST | `/api/requests/1/feedback` | Read your own feedback and whether you can rate; submit feedback once per request |
+| GET | `/api/students/1/reputation` | An advisor's aggregate rating, helpful %, students helped, and response rate |
 
 Quick browser checks:
 
@@ -230,16 +234,13 @@ Use the direct virtual-environment Python commands in the backend setup section 
 
 ## Working with Git
 
-Before starting work, pull the latest changes:
+All work branches from `dev`, and pull requests target `dev`, never `main`. At the end of the project, `dev` is merged into `main` in a single pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, checks, and pull request expectations.
+
+Before starting work, fetch the latest changes and create a feature branch from `origin/dev`:
 
 ```powershell
-git pull origin main
-```
-
-Create a feature branch for your changes:
-
-```powershell
-git switch -c feature/short-description
+git fetch origin
+git switch -c feature/short-description origin/dev
 ```
 
 After making changes:
@@ -250,7 +251,7 @@ git commit -m "Describe your change"
 git push -u origin feature/short-description
 ```
 
-Open a pull request on GitHub for team review before merging into `main`.
+Open a pull request into `dev` on GitHub. A teammate reviews it before it is merged.
 
 ## Planned improvements
 
@@ -261,7 +262,7 @@ Open a pull request on GitHub for team review before merging into `main`.
 
 ---
 
-**Repository:** https://github.com/kkattili_ncstate/PackConnect
+**Repository:** https://github.com/moeyk210/PackConnect
 
 ### Supabase connection setup
 
@@ -378,3 +379,57 @@ fallback. Supabase users are visible in search and can receive requests before
 their first app login. After signing in, they can accept/decline, chat, edit their
 own profile, and read notifications using the same Flask session flow. Existing
 Flask accounts continue to work. No new database migration is needed.
+
+### Advice feedback, reputation and M0 eval
+
+Apply migrations before restarting Flask (`python backend/scripts/migrate.py`).
+
+**Feedback.** Once a request is accepted and both people have sent at least one
+message, the chat shows **Rate this conversation**: a rating from 1 to 10,
+whether the advice was helpful, and an optional comment of up to 500
+characters. Each participant can rate a request once and can't change it
+afterwards; their own feedback is then shown read-only. Requests that are
+pending, declined, cancelled, expired, or closed by a block can't be rated.
+
+**Reputation.** Search cards and profiles show an advisor's average rating,
+number of students helped, and response rate; profiles also show the helpful
+percentage. Only the asking student's rating counts; an advisor's rating of a
+student never affects the advisor's own score. The response rate divides
+answered requests (accepted, declined, completed) by those that were due an
+answer (adding expired requests and pending requests past their deadline).
+Reputation never includes comments or who gave a rating. The rules are
+documented in `backend/features/reputation.py`.
+
+**M0 eval.** Our M0 claim for this feature: *more than 70% of accepted
+connections are rated helpful by the student who asked.* Connections that were
+never rated count against the claim. The eval only reads the database:
+
+```powershell
+python backend/scripts/m0_eval.py            # uses SUPABASE_DB_URL from backend/.env
+python backend/scripts/m0_eval.py --check    # exit status 1 unless the claim is met
+```
+
+To see it on demo data with a known answer, seed a throwaway local database.
+The seed script refuses non-local databases unless you pass `--allow-remote`,
+so fictional data can't end up in your team's Supabase project by accident.
+
+```powershell
+docker run --rm -d --name packconnect-demo -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=packconnect_demo -p 127.0.0.1:54330:5432 postgres:17
+$demo = "postgresql://postgres:postgres@127.0.0.1:54330/packconnect_demo?sslmode=disable"
+python backend/scripts/seed_demo.py --database-url $demo
+python backend/scripts/m0_eval.py --database-url $demo
+```
+
+Expected output:
+
+```text
+M0: 75.0% of accepted connections were rated helpful (9 of 12)
+    Rated: 10 of 12 connections (83.3%); 9 of 10 ratings say helpful (90.0%)
+    Claim: more than 70% of accepted connections rated helpful -> PASS
+```
+
+The same database can run the whole app with fictional students: set
+`$env:SUPABASE_DB_URL = $demo` before `python backend/app.py`, then sign in as
+`maya@demo.packconnect.test` (or any other seeded student) with the password
+`packconnect-demo-2026`. Stop it with `docker stop packconnect-demo`, which also
+deletes the demo data.
