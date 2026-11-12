@@ -103,7 +103,7 @@ git --version
 ### 1. Clone the repository
 
 ```powershell
-git clone https://github.com/kkattili_ncstate/PackConnect.git
+git clone https://github.com/moeyk210/PackConnect.git
 cd PackConnect
 ```
 
@@ -230,16 +230,13 @@ Use the direct virtual-environment Python commands in the backend setup section 
 
 ## Working with Git
 
-Before starting work, pull the latest changes:
+All work branches from `dev`, and pull requests target `dev`, never `main`. At the end of the project, `dev` is merged into `main` in a single pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, checks, and pull request expectations.
+
+Before starting work, fetch the latest changes and create a feature branch from `origin/dev`:
 
 ```powershell
-git pull origin main
-```
-
-Create a feature branch for your changes:
-
-```powershell
-git switch -c feature/short-description
+git fetch origin
+git switch -c feature/short-description origin/dev
 ```
 
 After making changes:
@@ -250,7 +247,7 @@ git commit -m "Describe your change"
 git push -u origin feature/short-description
 ```
 
-Open a pull request on GitHub for team review before merging into `main`.
+Open a pull request into `dev` on GitHub. A teammate reviews it before it is merged.
 
 ## Planned improvements
 
@@ -261,7 +258,7 @@ Open a pull request on GitHub for team review before merging into `main`.
 
 ---
 
-**Repository:** https://github.com/kkattili_ncstate/PackConnect
+**Repository:** https://github.com/moeyk210/PackConnect
 
 ### Supabase connection setup
 
