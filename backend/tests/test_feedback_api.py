@@ -112,3 +112,58 @@ class FeedbackStatusTests(FeedbackApiTestCase):
         # The status of someone else's request must not leak through the error code.
         self.request_with_status("pending")
         self.assertEqual(self.submit("outsider").status_code, 404)
+
+
+class FeedbackValidationTests(FeedbackApiTestCase):
+    def assert_rejected(self, response, message_part):
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(message_part, response.get_json()["error"])
+
+    def test_rating_boundaries_one_and_ten_are_accepted(self):
+        for rating in (1, 10):
+            with self.subTest(rating=rating):
+                with portal.get_db() as db:
+                    db.execute("DELETE FROM advice_feedback")
+                self.assertEqual(self.submit(rating=rating).status_code, 201)
+
+    def test_invalid_ratings_get_400(self):
+        for rating in (0, 11, -1, 7.5, "8", None, True, False, [8]):
+            with self.subTest(rating=rating):
+                self.assert_rejected(self.submit(rating=rating), "Rating")
+        self.assertEqual(self.stored_feedback(), [])
+
+    def test_missing_rating_gets_400(self):
+        response = self.clients["asker"].post(f"/api/requests/{self.request_id}/feedback", json={"helpful": True})
+        self.assert_rejected(response, "Rating")
+
+    def test_helpful_must_be_true_or_false(self):
+        for helpful in (None, "yes", 1, 0):
+            with self.subTest(helpful=helpful):
+                self.assert_rejected(self.submit(helpful=helpful), "helpful")
+
+    def test_helpful_false_is_stored(self):
+        response = self.submit(helpful=False, rating=3)
+        self.assertEqual(response.status_code, 201)
+        self.assertIs(response.get_json()["feedback"]["helpful"], False)
+
+    def test_comment_must_be_text_of_at_most_500_characters(self):
+        self.assert_rejected(self.submit(comment=42), "Comment")
+        self.assert_rejected(self.submit(comment="x" * 501), "500")
+        self.assertEqual(self.submit(comment="x" * 500).status_code, 201)
+
+    def test_comment_whitespace_is_trimmed(self):
+        response = self.submit(comment="   Helpful tips.  \n")
+        self.assertEqual(response.get_json()["feedback"]["comment"], "Helpful tips.")
+
+    def test_non_object_body_gets_400(self):
+        for body in ([8, True], "great", 8):
+            with self.subTest(body=body):
+                response = self.clients["asker"].post(f"/api/requests/{self.request_id}/feedback", json=body)
+                self.assert_rejected(response, "JSON object")
+        response = self.clients["asker"].post(f"/api/requests/{self.request_id}/feedback",
+                                              data="not json", content_type="text/plain")
+        self.assert_rejected(response, "JSON object")
+
+    def test_access_checks_run_before_validation(self):
+        # A bad body must not reveal whether an outsider's target request exists.
+        self.assertEqual(self.submit("outsider", rating=99).status_code, 404)
