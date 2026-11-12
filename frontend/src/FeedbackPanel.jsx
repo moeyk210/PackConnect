@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   MAX_COMMENT_LENGTH,
   MAX_RATING,
   MIN_RATING,
+  getFeedback,
   submitFeedback,
   validateFeedback,
 } from './feedbackApi'
@@ -148,5 +149,46 @@ export default function FeedbackPanel({
         </fieldset>
       </form>
     </section>
+  )
+}
+
+const RATEABLE_STATUSES = ['accepted', 'completed']
+
+// Chat-view wrapper: loads feedback state once both people have messaged, then
+// shows the form while rating is open, or the summary once feedback is given.
+export function ConversationFeedback({
+  requestId,
+  record,
+  messages,
+  peerName,
+}) {
+  const [state, setState] = useState(null)
+  const bothMessaged =
+    messages.some((item) => item.sender_id === record.sender_id) &&
+    messages.some((item) => item.sender_id === record.recipient_id)
+  const relevant = bothMessaged && RATEABLE_STATUSES.includes(record.status)
+
+  useEffect(() => {
+    if (!relevant) return undefined
+    const controller = new AbortController()
+    getFeedback(requestId, { signal: controller.signal })
+      .then((data) => {
+        if (!controller.signal.aborted) setState(data)
+      })
+      .catch(() => {
+        // Feedback is secondary to the chat: if it cannot load, stay hidden.
+        if (!controller.signal.aborted) setState(null)
+      })
+    return () => controller.abort()
+  }, [requestId, relevant])
+
+  if (!relevant || !state || (!state.feedback && !state.can_rate)) return null
+  return (
+    <FeedbackPanel
+      requestId={requestId}
+      peerName={peerName}
+      feedback={state.feedback}
+      onSubmitted={(feedback) => setState({ feedback, can_rate: false })}
+    />
   )
 }

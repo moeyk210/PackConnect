@@ -8,8 +8,8 @@ export const MAX_COMMENT_LENGTH = 500
 const feedbackPath = (requestId) => `/api/requests/${requestId}/feedback`
 
 // Resolves to { feedback, can_rate }; feedback is null until you have rated.
-export function getFeedback(requestId) {
-  return api(feedbackPath(requestId))
+export function getFeedback(requestId, options = {}) {
+  return api(feedbackPath(requestId), options)
 }
 
 // Resolves to the stored feedback; rejects with the API's error message.
