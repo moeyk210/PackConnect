@@ -56,6 +56,33 @@ def create_feedback_blueprint(get_db):
             (request_id, user),
         ).fetchone()
 
+    def both_have_messaged(db, advice):
+        # A rating should reflect a real exchange, not an accepted request nobody used.
+        row = db.execute(
+            "SELECT count(DISTINCT sender_id) AS senders FROM chat_messages WHERE request_id = %s AND sender_id IN (%s, %s)",
+            (advice["id"], advice["sender_id"], advice["recipient_id"]),
+        ).fetchone()
+        return row["senders"] == 2
+
+    def own_feedback(db, user, request_id):
+        row = db.execute(
+            f"SELECT {FEEDBACK_FIELDS} FROM advice_feedback WHERE request_id = %s AND rater_id = %s",
+            (request_id, user),
+        ).fetchone()
+        return dict(row) if row else None
+
+    @api.get("/api/requests/<int:request_id>/feedback")
+    @authenticated
+    def get_feedback(db, user, request_id):
+        advice = participant_request(db, user, request_id)
+        if advice is None:
+            return jsonify(error="Request not found."), 404
+        # Only the signed-in person's own feedback is returned, never the other participant's.
+        mine = own_feedback(db, user, request_id)
+        can_rate = (mine is None and advice["status"] in RATEABLE_STATUSES
+                    and both_have_messaged(db, advice))
+        return jsonify(feedback=mine, can_rate=can_rate)
+
     @api.post("/api/requests/<int:request_id>/feedback")
     @authenticated
     def submit_feedback(db, user, request_id):
@@ -64,6 +91,8 @@ def create_feedback_blueprint(get_db):
             return jsonify(error="Request not found."), 404
         if advice["status"] not in RATEABLE_STATUSES:
             return jsonify(error="Feedback opens once the request has been accepted."), 403
+        if not both_have_messaged(db, advice):
+            return jsonify(error="Feedback opens after you have both sent a message."), 403
         try:
             rating, helpful, comment = feedback_payload(request.get_json(silent=True))
         except ValueError as error:
