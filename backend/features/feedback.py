@@ -68,11 +68,17 @@ def create_feedback_blueprint(get_db):
             rating, helpful, comment = feedback_payload(request.get_json(silent=True))
         except ValueError as error:
             return jsonify(error=str(error)), 400
+        # The unique (request_id, rater_id) constraint decides races: of two
+        # simultaneous submissions, exactly one inserts and the other gets 409.
         row = db.execute(
             f"""INSERT INTO advice_feedback (request_id, rater_id, rating, helpful, comment)
-            VALUES (%s, %s, %s, %s, %s) RETURNING {FEEDBACK_FIELDS}""",
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (request_id, rater_id) DO NOTHING
+            RETURNING {FEEDBACK_FIELDS}""",
             (request_id, user, rating, helpful, comment),
         ).fetchone()
+        if row is None:
+            return jsonify(error="You have already given feedback for this conversation."), 409
         return jsonify(feedback=dict(row)), 201
 
     return api

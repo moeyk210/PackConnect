@@ -1,5 +1,8 @@
 """Feedback API: who may rate an advice connection, and what they get back."""
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 import app as portal
 from tests.postgres_test_support import PostgresTestCase
 
@@ -167,3 +170,49 @@ class FeedbackValidationTests(FeedbackApiTestCase):
     def test_access_checks_run_before_validation(self):
         # A bad body must not reveal whether an outsider's target request exists.
         self.assertEqual(self.submit("outsider", rating=99).status_code, 404)
+
+
+class FeedbackDuplicateTests(FeedbackApiTestCase):
+    def test_second_submission_gets_409_and_keeps_the_first(self):
+        self.assertEqual(self.submit(rating=9).status_code, 201)
+        response = self.submit(rating=2, helpful=False)
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("already", response.get_json()["error"])
+        [row] = self.stored_feedback()
+        self.assertEqual((row["rating"], row["helpful"]), (9, True))
+
+    def test_each_participant_still_gets_one_submission(self):
+        self.assertEqual(self.submit("asker").status_code, 201)
+        self.assertEqual(self.submit("advisor").status_code, 201)
+        self.assertEqual(self.submit("advisor").status_code, 409)
+        self.assertEqual(len(self.stored_feedback()), 2)
+
+    def test_rejected_submission_does_not_use_up_the_one_attempt(self):
+        self.assertEqual(self.submit(rating=0).status_code, 400)
+        self.assertEqual(self.submit(rating=7).status_code, 201)
+
+    def test_new_request_with_same_advisor_can_be_rated_again(self):
+        self.assertEqual(self.submit().status_code, 201)
+        with portal.get_db() as db:
+            db.execute("UPDATE advice_requests SET status = 'completed' WHERE id = %s", (self.request_id,))
+            second = self.create_request(db, "accepted")
+        self.assertEqual(self.submit(request_id=second).status_code, 201)
+
+    def test_simultaneous_submissions_store_exactly_one(self):
+        clients = []
+        for _ in range(2):
+            client = portal.app.test_client()
+            with client.session_transaction() as session:
+                session["student_id"] = self.ids["asker"]
+            clients.append(client)
+        barrier = Barrier(2)
+
+        def send(client):
+            barrier.wait(timeout=5)
+            return client.post(f"/api/requests/{self.request_id}/feedback",
+                               json={"rating": 8, "helpful": True}).status_code
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(send, clients))
+        self.assertEqual(sorted(results), [201, 409])
+        self.assertEqual(len(self.stored_feedback()), 1)
