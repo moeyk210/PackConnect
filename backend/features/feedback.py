@@ -6,6 +6,9 @@ from flask import Blueprint, jsonify, request, session
 from core.identity import session_student_id
 
 FEEDBACK_FIELDS = "id, request_id, rating, helpful, comment, created_at"
+# Only connections that actually happened can be rated. Requests closed by a
+# block are excluded so feedback cannot be used for retaliation.
+RATEABLE_STATUSES = ("accepted", "completed")
 
 
 def create_feedback_blueprint(get_db):
@@ -32,8 +35,11 @@ def create_feedback_blueprint(get_db):
     @api.post("/api/requests/<int:request_id>/feedback")
     @authenticated
     def submit_feedback(db, user, request_id):
-        if participant_request(db, user, request_id) is None:
+        advice = participant_request(db, user, request_id)
+        if advice is None:
             return jsonify(error="Request not found."), 404
+        if advice["status"] not in RATEABLE_STATUSES:
+            return jsonify(error="Feedback opens once the request has been accepted."), 403
         data = request.get_json(silent=True) or {}
         row = db.execute(
             f"""INSERT INTO advice_feedback (request_id, rater_id, rating, helpful, comment)

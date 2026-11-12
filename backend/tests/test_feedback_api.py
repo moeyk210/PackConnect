@@ -78,3 +78,37 @@ class FeedbackAccessTests(FeedbackApiTestCase):
         response = self.submit(comment=None)
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.get_json()["feedback"]["comment"], "")
+
+
+class FeedbackStatusTests(FeedbackApiTestCase):
+    def request_with_status(self, status):
+        # Reuse the shared request; only one active request per pair is allowed.
+        with portal.get_db() as db:
+            db.execute("UPDATE advice_requests SET status = %s WHERE id = %s", (status, self.request_id))
+        return self.request_id
+
+    def test_accepted_and_completed_requests_can_be_rated(self):
+        for status in ("accepted", "completed"):
+            with self.subTest(status=status):
+                self.request_with_status(status)
+                with portal.get_db() as db:
+                    db.execute("DELETE FROM advice_feedback")
+                self.assertEqual(self.submit().status_code, 201)
+
+    def test_other_statuses_get_403_and_store_nothing(self):
+        for status in ("pending", "declined", "cancelled", "expired", "closed"):
+            with self.subTest(status=status):
+                self.request_with_status(status)
+                response = self.submit()
+                self.assertEqual(response.status_code, 403)
+                self.assertIn("accepted", response.get_json()["error"])
+        self.assertEqual(self.stored_feedback(), [])
+
+    def test_status_check_applies_to_the_advisor_too(self):
+        self.request_with_status("pending")
+        self.assertEqual(self.submit("advisor").status_code, 403)
+
+    def test_outsider_gets_404_not_403_for_unrated_statuses(self):
+        # The status of someone else's request must not leak through the error code.
+        self.request_with_status("pending")
+        self.assertEqual(self.submit("outsider").status_code, 404)
