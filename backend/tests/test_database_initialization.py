@@ -48,7 +48,7 @@ class DatabaseInitializationTests(PostgresTestCase):
         with portal.get_db() as db:
             for table in ("students", "accounts", "completed_courses", "current_courses",
                           "messages", "advice_requests", "chat_messages", "notifications", "student_blocks", "conversation_reads",
-                          "student_reports", "staff_members", "advice_meetings", "password_reset_tokens", "recovery_limits"):
+                          "student_reports", "staff_members", "advice_meetings", "password_reset_tokens", "recovery_limits", "courses"):
                 for role in ("anon", "authenticated"):
                     for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
                         allowed = db.execute("SELECT has_table_privilege(%s, %s, %s) AS allowed",
