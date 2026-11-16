@@ -6,7 +6,7 @@ from import_catalog import import_catalog
 from tests.postgres_test_support import PostgresTestCase
 
 
-FIXTURE = Path(__file__).parent / "fixtures" / "courses_fixture.csv"
+FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "courses_fixture.csv"
 
 
 class ImportCatalogTests(PostgresTestCase):

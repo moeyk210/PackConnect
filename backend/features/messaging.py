@@ -6,6 +6,7 @@ from contextlib import nullcontext
 
 from flask import Blueprint, g, jsonify, request, session
 from core.identity import registered_student_sql, session_student_id
+from core.courses import normalize_code
 from features.availability import advisor_availability
 from features.lifecycle import blocked, expire_requests, lock_students, notify
 
@@ -89,7 +90,7 @@ def create_messaging_blueprint(get_db):
             if not isinstance(value, str) or not value.strip() or len(value.strip()) > limit:
                 return jsonify({"error": f"{field.replace('_', ' ').capitalize()} must contain 1–{limit} characters."}), 400
             fields[field] = value.strip()
-        fields["course_code"] = fields["course_code"].upper()
+        fields["course_code"] = normalize_code(fields["course_code"])
         try:
             with request_database() as db:
                 lock_students(db, session["student_id"], recipient_id)

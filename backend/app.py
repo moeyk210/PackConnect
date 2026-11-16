@@ -10,6 +10,7 @@ from pathlib import Path
 from features.messaging import create_messaging_blueprint, initialize_messaging
 from core.database import connect_database
 from core.identity import registered_student_sql, session_student_id
+from core.courses import normalize_code
 from features.community import create_community_blueprint
 from features.meetings import create_meetings_blueprint
 from features.recovery import create_recovery_blueprint
@@ -82,7 +83,7 @@ def normalize_courses(courses):
     seen = set()
 
     for course in courses:
-        course_code = course.strip().upper()
+        course_code = normalize_code(course)
         if course_code and course_code not in seen:
             normalized.append(course_code)
             seen.add(course_code)
@@ -304,7 +305,7 @@ def register():
             or any(not isinstance(course, str) or not course.strip()
                    or len(course.strip()) > 30 for course in courses)):
         return jsonify({"error": "Provide up to 50 completed course codes, each at most 30 characters."}), 400
-    courses = sorted({course.strip().upper() for course in courses})
+    courses = sorted({normalize_code(course) for course in courses})
     try:
         advising = {"max_open_requests": 5, "pause_until": None, **availability_payload(data)}
     except ValueError as error:
@@ -363,7 +364,7 @@ def suggest_courses():
 
 @app.route("/api/students/search")
 def search_students():
-    course = request.args.get("course", "").strip().upper()
+    course = normalize_code(request.args.get("course", ""))
     program = request.args.get("program", "").strip()
     year = request.args.get("year", "").strip()
     skills = request.args.get("skills", "").strip()
