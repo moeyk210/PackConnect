@@ -9,6 +9,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from pathlib import Path
 from features.messaging import create_messaging_blueprint, initialize_messaging
 from core.database import connect_database
+from core.realtime import register_realtime, socketio
 from core.identity import registered_student_sql, session_student_id
 from features.community import create_community_blueprint
 from features.meetings import create_meetings_blueprint
@@ -72,6 +73,7 @@ app.register_blueprint(create_messaging_blueprint(get_db))
 app.register_blueprint(create_community_blueprint(get_db))
 app.register_blueprint(create_meetings_blueprint(get_db))
 app.register_blueprint(create_recovery_blueprint(get_db))
+register_realtime(app, get_db)
 
 
 def normalize_courses(courses):
@@ -512,4 +514,7 @@ def send_message(student_id):
 
 if __name__ == "__main__":
     initialize_database()
-    app.run(debug=True, port=5000)
+    # socketio.run wraps the Werkzeug development server and adds WebSocket
+    # support. Flask-SocketIO refuses Werkzeug when stdin is not a terminal
+    # (IDE run buttons, background shells); this block is development-only.
+    socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True)

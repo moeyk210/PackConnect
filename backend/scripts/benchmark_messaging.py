@@ -1,10 +1,14 @@
 """Measure chat delivery latency against a running PackConnect backend.
 
 Never point this at a shared or live database: it registers two fictional
-accounts, opens an advice request, and sends messages. Use a local database
-(see docs/REALTIME_MESSAGING.md).
+accounts, opens an advice request, and sends messages. Use --serve-local with
+a local database (see docs/REALTIME_MESSAGING.md):
 
-    python backend/scripts/benchmark_messaging.py --messages 30
+    python backend/scripts/benchmark_messaging.py --serve-local postgresql://...@127.0.0.1:55432/packconnect_bench
+
+--serve-local starts the backend inside this process on a free port chosen by
+the operating system, so requests cannot reach another server that happens to
+be running (on Windows, two servers can bind port 5000 at once).
 
 Polling mode reproduces the current frontend chat loop (Messaging.jsx): the
 receiver requests GET /api/requests/<id>/messages?after_id=<cursor>, waits for
@@ -15,13 +19,20 @@ containing that message arrives.
 
 import argparse
 import json
+import logging
+import os
 import random
+import secrets
 import statistics
+import sys
 import threading
 import time
 import urllib.request
 from http.cookiejar import CookieJar
+from pathlib import Path
 from uuid import uuid4
+
+from psycopg.conninfo import conninfo_to_dict
 
 POLL_DELAY_SECONDS = 3.0  # Messaging.jsx: setTimeout(poll, 3000)
 
@@ -39,6 +50,23 @@ class Client:
         self.requests_made += 1
         with self.opener.open(request, timeout=15) as response:
             return json.loads(response.read())
+
+
+def serve_local(database_url):
+    if conninfo_to_dict(database_url).get("host") not in ("127.0.0.1", "localhost", "::1"):
+        raise SystemExit("--serve-local requires a local PostgreSQL host; never use the shared Supabase URL.")
+    # Set before importing app: load_dotenv never overrides existing variables,
+    # so backend/.env cannot redirect the benchmark to Supabase.
+    os.environ.update(SUPABASE_DB_URL=database_url, SUPABASE_URL="", SUPABASE_SECRET_KEY="",
+                      FLASK_SECRET_KEY=secrets.token_hex(32))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import app as portal
+    from werkzeug.serving import make_server
+
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)  # keep per-request lines out of results
+    server = make_server("127.0.0.1", 0, portal.app, threaded=True)  # port 0: OS picks a free port
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return f"http://127.0.0.1:{server.server_port}"
 
 
 def percentile(values, fraction):
@@ -110,11 +138,16 @@ def measure_polling(base_url, count, seed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--base-url", default="http://127.0.0.1:5000")
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--serve-local", metavar="DATABASE_URL",
+                        help="run the backend in-process against this local database")
+    target.add_argument("--base-url", help="an already running backend you know uses a local database")
     parser.add_argument("--messages", type=int, default=30)
     parser.add_argument("--seed", type=int, default=510)
     args = parser.parse_args()
-    latencies, missing, chat_rate = measure_polling(args.base_url, args.messages, args.seed)
+    base_url = serve_local(args.serve_local) if args.serve_local else args.base_url
+    print(f"Target: {base_url}")
+    latencies, missing, chat_rate = measure_polling(base_url, args.messages, args.seed)
     if not latencies:
         raise SystemExit("No messages were received.")
     print("Mode: polling (current frontend chat loop)")
