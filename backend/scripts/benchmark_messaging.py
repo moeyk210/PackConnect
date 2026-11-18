@@ -10,11 +10,17 @@ a local database (see docs/REALTIME_MESSAGING.md):
 the operating system, so requests cannot reach another server that happens to
 be running (on Windows, two servers can bind port 5000 at once).
 
-Polling mode reproduces the current frontend chat loop (Messaging.jsx): the
-receiver requests GET /api/requests/<id>/messages?after_id=<cursor>, waits for
-the response, then schedules the next request 3 seconds later. Latency is the
-time from just before the sender's POST to the moment the receiver's response
-containing that message arrives.
+--mode poll reproduces the pre-real-time frontend chat loop: the receiver
+requests GET /api/requests/<id>/messages?after_id=<cursor>, waits for the
+response, then schedules the next request 3 seconds later. It is also today's
+fallback while the socket is down.
+
+--mode push is the real-time path: the receiver keeps a Socket.IO connection
+(authenticated by its session cookie) and makes no HTTP requests while waiting.
+Push mode needs the dev-only client: pip install -r backend/requirements-dev.txt
+
+Latency is the time from just before the sender's POST to the moment the
+receiver has the message (poll response or pushed chat_message event).
 """
 
 import argparse
@@ -40,8 +46,12 @@ POLL_DELAY_SECONDS = 3.0  # Messaging.jsx: setTimeout(poll, 3000)
 class Client:
     def __init__(self, base_url):
         self.base_url = base_url.rstrip("/")
-        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
+        self.jar = CookieJar()
+        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
         self.requests_made = 0
+
+    def cookie_header(self):
+        return "; ".join(f"{cookie.name}={cookie.value}" for cookie in self.jar)
 
     def call(self, method, path, body=None):
         data = None if body is None else json.dumps(body).encode()
@@ -96,6 +106,48 @@ def open_conversation(base_url):
     return sender, receiver, request_id
 
 
+def send_messages(sender, request_id, count, seed, sent_at):
+    rng = random.Random(seed)
+    for number in range(count):
+        # Random gaps spread sends uniformly across the poll cycle.
+        time.sleep(rng.uniform(0.5, 3.5))
+        body = f"benchmark message {number}"
+        sent_at[body] = time.perf_counter()
+        sender.call("POST", f"/api/requests/{request_id}/messages", {"body": body})
+
+
+def wait_for(received_at, count):
+    deadline = time.perf_counter() + POLL_DELAY_SECONDS * 3
+    while len(received_at) < count and time.perf_counter() < deadline:
+        time.sleep(0.05)
+
+
+def measure_push(base_url, count, seed):
+    import socketio  # dev-only dependency (backend/requirements-dev.txt)
+
+    sender, receiver, request_id = open_conversation(base_url)
+    sent_at, received_at = {}, {}
+    cookie = receiver.cookie_header()
+    client = socketio.Client(reconnection=False)
+
+    @client.on("chat_message")
+    def on_message(data):
+        if data["request_id"] == request_id:
+            received_at[data["message"]["body"]] = time.perf_counter()
+
+    client.connect(base_url, headers={"Cookie": cookie}, transports=["websocket"], wait_timeout=10)
+    receiver.requests_made = 0
+    started = time.perf_counter()
+    try:
+        send_messages(sender, request_id, count, seed, sent_at)
+        wait_for(received_at, count)
+    finally:
+        client.disconnect()
+    elapsed_minutes = (time.perf_counter() - started) / 60
+    latencies = [(received_at[body] - sent_at[body]) * 1000 for body in sent_at if body in received_at]
+    return latencies, count - len(latencies), receiver.requests_made / elapsed_minutes
+
+
 def measure_polling(base_url, count, seed):
     sender, receiver, request_id = open_conversation(base_url)
     sent_at, received_at = {}, {}
@@ -119,16 +171,8 @@ def measure_polling(base_url, count, seed):
     started = time.perf_counter()
     thread = threading.Thread(target=poll, daemon=True)
     thread.start()
-    rng = random.Random(seed)
-    for number in range(count):
-        # Random gaps spread sends uniformly across the poll cycle.
-        time.sleep(rng.uniform(0.5, 3.5))
-        body = f"benchmark message {number}"
-        sent_at[body] = time.perf_counter()
-        sender.call("POST", f"/api/requests/{request_id}/messages", {"body": body})
-    deadline = time.perf_counter() + POLL_DELAY_SECONDS * 3
-    while len(received_at) < count and time.perf_counter() < deadline:
-        time.sleep(0.05)
+    send_messages(sender, request_id, count, seed, sent_at)
+    wait_for(received_at, count)
     done.set()
     thread.join(timeout=15)
     elapsed_minutes = (time.perf_counter() - started) / 60
@@ -142,15 +186,18 @@ def main():
     target.add_argument("--serve-local", metavar="DATABASE_URL",
                         help="run the backend in-process against this local database")
     target.add_argument("--base-url", help="an already running backend you know uses a local database")
+    parser.add_argument("--mode", choices=("poll", "push"), default="poll")
     parser.add_argument("--messages", type=int, default=30)
     parser.add_argument("--seed", type=int, default=510)
     args = parser.parse_args()
     base_url = serve_local(args.serve_local) if args.serve_local else args.base_url
     print(f"Target: {base_url}")
-    latencies, missing, chat_rate = measure_polling(base_url, args.messages, args.seed)
+    measure = measure_push if args.mode == "push" else measure_polling
+    latencies, missing, chat_rate = measure(base_url, args.messages, args.seed)
     if not latencies:
         raise SystemExit("No messages were received.")
-    print("Mode: polling (current frontend chat loop)")
+    print("Mode: " + ("push (Socket.IO, no polling)" if args.mode == "push"
+                      else "polling (3 s chat loop: pre-real-time / fallback)"))
     print(f"Messages received: {len(latencies)}/{args.messages} (missing {missing})")
     print(f"Latency p50: {statistics.median(latencies):.0f} ms")
     print(f"Latency p95: {percentile(latencies, 0.95):.0f} ms")

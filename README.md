@@ -40,7 +40,8 @@ See the [Step 1 baseline audit](docs/STEP_1_AUDIT.md) for verified behavior, lim
 - View a student's profile, including program, year, bio, interests, and completed courses (as returned by the API).
 - Store accounts, profiles, courses, requests, chat, and notifications in Supabase PostgreSQL.
 - Get in-app bell notifications for incoming requests, request decisions, and new chat messages. Read/unread state is saved per account.
-- Chat privately after acceptance. Both participants can send messages of up to 2,000 characters, and conversations persist across visits. Open chats refresh every three seconds.
+- Chat privately after acceptance. Both participants can send messages of up to 2,000 characters, and conversations persist across visits. Messages, notifications, requests, the inbox, and meetings update in real time over WebSockets, with "Seen" read receipts and typing indicators. If the live connection drops, the app falls back to polling and catches up on reconnect. See [real-time messaging](docs/REALTIME_MESSAGING.md).
+- Logging out ends that browser's session on the server, so a copied session cookie stops working. Other signed-in devices stay signed in.
 
 New request and community tools include cancellation, seven-day expiration,
 a conversation inbox, block/report controls with moderator review, password
@@ -140,6 +141,11 @@ Running on http://127.0.0.1:5000
 ```
 
 Flask connects to Supabase; it creates no local database or sample profiles. Leave this terminal running.
+
+`backend/app.py` serves the API and the real-time Socket.IO channel through
+Flask-SocketIO. After pulling changes, reinstall `backend/requirements.txt`,
+apply migrations, and restart both Flask and Vite (Vite proxies `/socket.io`).
+After the server-side session upgrade, everyone signs in again once.
 
 > **PowerShell note:** If script execution is blocked when activating the virtual environment, you can skip activation and run `.\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt` followed by `.\.venv\Scripts\python.exe backend/app.py`.
 
@@ -256,7 +262,7 @@ Open a pull request on GitHub for team review before merging into `main`.
 
 - Email verification and login rate limiting (password recovery has its own rate limits).
 - Course completion reporting and richer course discovery.
-- Message read receipts, notifications, and conversation management.
+- Conversation management (archiving, message deletion) and settings to turn off read receipts or typing indicators.
 - Improved testing, validation, privacy, and deployment configuration.
 
 ---
@@ -334,8 +340,10 @@ Declined requests stay in history, and a new request may be sent. Accepted or
 declined decisions cannot be reversed through the API. Either participant can mark accepted advice completed to release capacity and retain read-only history. Turning off future advice
 availability does not delete existing connections or messages.
 
-The Requests list refreshes on navigation and every eight seconds. Open chats
-poll every three seconds and fetch history in batches of 100. Requests/messages
+While the real-time connection is up, the Requests list, inbox, and open chats
+update when something changes, without polling. If it drops, they fall back to
+polling (requests and inbox every eight seconds, chats every three seconds) and
+catch up on reconnect. History is fetched in batches of 100. Requests/messages
 survive reloads and backend restarts; sign in again if a development restart
 invalidates your session. See [messaging API and test instructions](docs/MESSAGING.md).
 
@@ -355,7 +363,8 @@ and its route. After pulling these changes, install `backend/requirements.txt`
 and restart Flask. No additional database migration is needed for this
 performance update. See [verification details](docs/NOTIFICATION_PERFORMANCE.md).
 
-Notifications refresh every five seconds while the app is open. No browser
+Notifications arrive in real time while the app is open, and are polled every
+five seconds only if the live connection drops. No browser
 permission is needed; these are in-app alerts, not email or operating-system
 push notifications. Apply migrations before restarting Flask to prepare notification storage.
 Existing pending requests and completed decisions are backfilled once without
