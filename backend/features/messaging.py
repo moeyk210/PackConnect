@@ -6,8 +6,9 @@ from contextlib import nullcontext
 
 from flask import Blueprint, g, jsonify, request, session
 from core.identity import registered_student_sql, session_student_id
+from core.realtime import publish
 from features.availability import advisor_availability
-from features.lifecycle import blocked, expire_requests, lock_students, notify
+from features.lifecycle import blocked, expire_requests, lock_students, notify, publish_pair
 
 
 def initialize_messaging(db):
@@ -117,10 +118,10 @@ def create_messaging_blueprint(get_db):
                 """, (session["student_id"], recipient_id, fields["course_code"],
                       fields["advice_topic"], fields["message"]))
                 result = get_request(db, cursor.fetchone()["id"])
-                db.execute("""
-                    INSERT INTO notifications (user_id, actor_id, request_id, kind, event_key)
-                    VALUES (%s, %s, %s, 'request_received', %s)
-                """, (recipient_id, session["student_id"], result["id"], f"request:{result['id']}"))
+                notify(db, recipient_id, session["student_id"], result["id"],
+                       "request_received", f"request:{result['id']}")
+                publish_pair(db, session["student_id"], recipient_id, session["student_id"],
+                             "request", {"request_id": result["id"]})
         except UniqueViolation:
             return jsonify({"error": "You already have a pending request or accepted connection with this student. Open Requests to continue."}), 409
         return jsonify({"request": result}), 201
@@ -146,12 +147,18 @@ def create_messaging_blueprint(get_db):
                 if record["status"] == "pending":
                     db.execute("UPDATE advice_requests SET status='cancelled' WHERE id=%s",(request_id,))
                     notify(db,record["recipient_id"],record["sender_id"],request_id,"cancelled",f"cancelled:{request_id}")
+                    publish_pair(db, record["sender_id"], record["recipient_id"], session["student_id"],
+                                 "request", {"request_id": request_id})
                 return jsonify(request=get_request(db,request_id))
             if data["status"] == "completed":
                 if record["status"] not in ("accepted", "completed"):
                     return jsonify({"error": "Only accepted advice can be completed."}), 409
                 db.execute("UPDATE advice_requests SET status = 'completed' WHERE id = %s", (request_id,))
                 db.execute("UPDATE advice_meetings SET status='cancelled' WHERE request_id=%s AND status IN ('proposed','accepted') AND ends_at>now()",(request_id,))
+                if record["status"] == "accepted":
+                    for event in ("request", "meeting"):
+                        publish_pair(db, record["sender_id"], record["recipient_id"], session["student_id"],
+                                     event, {"request_id": request_id})
                 return jsonify({"request": get_request(db, request_id)})
             if record["recipient_id"] != session["student_id"]:
                 return jsonify({"error": "Only the recipient can respond."}), 403
@@ -161,11 +168,10 @@ def create_messaging_blueprint(get_db):
             if result["status"] != data["status"]:
                 return jsonify({"error": "This request has already been handled."}), 409
             if changed:
-                db.execute("""
-                    INSERT INTO notifications (user_id, actor_id, request_id, kind, event_key)
-                    VALUES (%s, %s, %s, %s, %s) ON CONFLICT (event_key) DO NOTHING
-                """, (record["sender_id"], session["student_id"], request_id,
-                      data["status"], f"decision:{request_id}"))
+                notify(db, record["sender_id"], session["student_id"], request_id,
+                       data["status"], f"decision:{request_id}")
+                publish_pair(db, record["sender_id"], record["recipient_id"], session["student_id"],
+                             "request", {"request_id": request_id})
         return jsonify({"request": result})
 
     @api.route("/api/requests/<int:request_id>/messages", methods=["GET", "POST"])
@@ -193,10 +199,10 @@ def create_messaging_blueprint(get_db):
                                     (request_id, session["student_id"], body.strip()))
                 row = db.execute("SELECT * FROM chat_messages WHERE id = %s", (cursor.fetchone()["id"],)).fetchone()
                 peer_id = record["recipient_id"] if record["sender_id"] == session["student_id"] else record["sender_id"]
-                db.execute("""
-                    INSERT INTO notifications (user_id, actor_id, request_id, kind, event_key)
-                    VALUES (%s, %s, %s, 'message', %s)
-                """, (peer_id, session["student_id"], request_id, f"message:{row['id']}"))
+                notify(db, peer_id, session["student_id"], request_id, "message", f"message:{row['id']}")
+                # Both participants: the sender's other tabs need the message too.
+                publish_pair(db, record["sender_id"], record["recipient_id"], session["student_id"],
+                             "chat_message", {"request_id": request_id, "message": dict(row)})
                 return jsonify({"message": dict(row)}), 201
             after_id = request.args.get("after_id", "0")
             if not after_id.isascii() or not after_id.isdigit() or len(after_id) > 18:
@@ -244,6 +250,7 @@ def create_messaging_blueprint(get_db):
             """, (notification_id, session["student_id"], session["student_id"], notification_id)).fetchone()
             if not result["changed"]:
                 return jsonify({"error": "Notification not found."}), 404
+            publish(db, [session["student_id"]], "notifications", {})  # sync the user's other tabs
         return jsonify({"status": "ok", "unread_count": result["unread_count"]})
 
     @api.route("/api/notifications/read", methods=["POST"])
@@ -262,6 +269,7 @@ def create_messaging_blueprint(get_db):
                 SELECT count(*) AS unread_count FROM notifications
                 WHERE user_id = %s AND read_at IS NULL AND id > %s
             """, (session["student_id"], through_id, session["student_id"], through_id)).fetchone()
+            publish(db, [session["student_id"]], "notifications", {})  # sync the user's other tabs
         return jsonify({"status": "ok", "unread_count": result["unread_count"]})
 
     return api
