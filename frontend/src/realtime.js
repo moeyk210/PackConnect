@@ -75,14 +75,18 @@ export function useRealtimeConnected() {
   )
 }
 
-// Calls handler for each server event; the latest handler is always used.
-export function useRealtimeEvent(event, handler) {
+// Calls handler for each server event (one name or a list; an empty list
+// subscribes to nothing). The latest handler is always used.
+export function useRealtimeEvent(events, handler) {
   const connection = useContext(RealtimeContext)
   const onEvent = useEffectEvent((...args) => handler(...args))
+  // A string key keeps the effect stable when callers pass a new array literal.
+  const key = [].concat(events).join('\n')
   useEffect(() => {
-    if (!connection) return undefined
+    if (!connection || !key) return undefined
+    const names = key.split('\n')
     const listener = (...args) => onEvent(...args)
-    connection.socket.on(event, listener)
-    return () => connection.socket.off(event, listener)
-  }, [connection, event])
+    names.forEach((name) => connection.socket.on(name, listener))
+    return () => names.forEach((name) => connection.socket.off(name, listener))
+  }, [connection, key])
 }

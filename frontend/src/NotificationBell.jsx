@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, json } from './messagingApi'
+import { useRealtimeConnected, useRealtimeEvent } from './realtime'
 import './NotificationBell.css'
 
 function describe(item) {
@@ -31,6 +32,8 @@ export default function NotificationBell({ route }) {
   const root = useRef(null)
   const bell = useRef(null)
   const panel = useRef(null)
+  const refreshNow = useRef(null)
+  const connected = useRealtimeConnected()
 
   useEffect(() => {
     mounted.current = true
@@ -43,48 +46,55 @@ export default function NotificationBell({ route }) {
     let stopped = false
     let timer
     let controller
+    // At most one pending poll, whatever order requests and events finish in.
+    function schedule(ms) {
+      clearTimeout(timer)
+      timer = setTimeout(refresh, ms)
+    }
     async function refresh() {
       if (stopped) return
       if (actionBusy.current) {
-        timer = setTimeout(refresh, 5000)
+        schedule(5000) // retry after the read action, connected or not
         return
       }
-      controller = new AbortController()
-      pollRequest.current = controller
+      const mine = new AbortController()
+      controller = mine
+      pollRequest.current = mine
       const version = revision.current
       try {
         const data = await api('/api/notifications', {
-          signal: controller.signal,
+          signal: mine.signal,
         })
-        if (
-          !stopped &&
-          !controller.signal.aborted &&
-          version === revision.current
-        ) {
+        if (!stopped && !mine.signal.aborted && version === revision.current) {
           setFeed(data)
           setError('')
         }
       } catch (err) {
-        if (
-          !stopped &&
-          !controller.signal.aborted &&
-          version === revision.current
-        )
+        if (!stopped && !mine.signal.aborted && version === revision.current)
           setError(err.message)
       } finally {
         if (!stopped) {
           setLoading(false)
-          timer = setTimeout(refresh, 5000)
+          // Polling is only the fallback while the socket is down.
+          if (!connected) schedule(5000)
         }
       }
+    }
+    refreshNow.current = () => {
+      if (stopped) return
+      clearTimeout(timer)
+      if (!actionBusy.current) controller?.abort() // replace any in flight
+      refresh()
     }
     refresh()
     return () => {
       stopped = true
+      refreshNow.current = null
       controller?.abort()
       clearTimeout(timer)
     }
-  }, [route, open])
+  }, [route, open, connected])
+  useRealtimeEvent('notifications', () => refreshNow.current?.())
 
   useEffect(() => {
     if (!open) return

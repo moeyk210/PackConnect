@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react'
 import { api, json } from './messagingApi'
+import { useRealtimeConnected, useRealtimeEvent } from './realtime'
 
-function useList(path, field) {
+// Lists with `events` are refreshed by pushes while the socket is connected
+// and poll only as a fallback. Lists without events keep polling (no pushes
+// exist for them, e.g. reports filed by other students).
+function useList(path, field, events = []) {
   const [items, setItems] = useState([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [version, setVersion] = useState(0)
+  const connected = useRealtimeConnected()
+  const pushed = events.length > 0 && connected
+  // A pushed change restarts the effect, which aborts any load in flight.
+  useRealtimeEvent(events, () => setVersion((v) => v + 1))
   useEffect(() => {
     const controller = new AbortController()
     let timer
@@ -21,7 +29,7 @@ function useList(path, field) {
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false)
-          timer = setTimeout(load, 8000)
+          if (!pushed) timer = setTimeout(load, 8000)
         }
       }
     }
@@ -30,7 +38,7 @@ function useList(path, field) {
       controller.abort()
       clearTimeout(timer)
     }
-  }, [path, field, version])
+  }, [path, field, version, pushed])
   return { items, error, loading, refresh: () => setVersion((v) => v + 1) }
 }
 
@@ -38,6 +46,7 @@ export function ConversationInbox() {
   const { items, error, loading } = useList(
     '/api/conversations',
     'conversations',
+    ['chat_message', 'request'],
   )
   return (
     <section className="request-panel">
