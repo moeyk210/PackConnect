@@ -1,9 +1,11 @@
+import os
 import unittest
 from unittest.mock import patch
 
 from psycopg import OperationalError
 
 import app as portal
+import core.realtime as core_realtime
 from core.realtime import socketio, user_room
 from tests.postgres_test_support import PostgresTestCase
 
@@ -53,6 +55,58 @@ class RealtimeConnectionTests(PostgresTestCase):
     def test_database_outage_refuses_connection(self):
         with patch("core.realtime.session_student_id", side_effect=OperationalError("down")):
             self.assertFalse(self.socket(self.clients[0]).is_connected())
+
+    def reset_token(self):
+        self.enterContext(patch.dict(os.environ, {"SMTP_HOST": "smtp.example.test",
+                                                  "SMTP_FROM": "noreply@example.test",
+                                                  "PUBLIC_APP_URL": "https://pack.example.test"}))
+        mail = self.enterContext(patch("features.recovery.send_recovery_email"))
+        response = portal.app.test_client().post("/api/auth/forgot-password", json={"email": "alice@example.edu"})
+        self.assertEqual(response.status_code, 200, response.get_json())
+        return mail.call_args.args[1].split("token=")[1]
+
+    def test_password_reset_disconnects_every_tab_of_that_user_only(self):
+        tabs = [self.socket(self.clients[0]), self.socket(self.clients[0])]
+        blake = self.socket(self.clients[1])
+        token = self.reset_token()
+        new_password = "a brand new long password"
+        response = portal.app.test_client().post("/api/auth/reset-password",
+                                                 json={"token": token, "password": new_password})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([tab.is_connected() for tab in tabs], [False, False])
+        self.assertTrue(blake.is_connected())
+        self.assertFalse(self.socket(self.clients[0]).is_connected())  # the old cookie cannot reconnect
+        fresh = portal.app.test_client()
+        fresh.post("/api/auth/login", json={"email": "alice@example.edu", "password": new_password})
+        self.assertTrue(self.socket(fresh).is_connected())
+
+    def test_failed_reset_disconnects_nobody(self):
+        alice = self.socket(self.clients[0])
+        self.reset_token()
+        response = portal.app.test_client().post("/api/auth/reset-password",
+                                                 json={"token": "not-a-real-token", "password": "a brand new long password"})
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(alice.is_connected())
+
+    def test_reset_during_connect_cannot_leave_a_stale_socket(self):
+        real = core_realtime.session_student_id
+        calls = []
+
+        def reset_between_checks(db, session):
+            result = real(db, session)
+            calls.append(result)
+            if len(calls) == 1:  # the reset commits right after the first check passes
+                with portal.get_db() as other:
+                    other.execute("UPDATE students SET session_version = session_version + 1 WHERE id = %s",
+                                  (self.ids[0],))
+            return result
+
+        with patch("core.realtime.session_student_id", side_effect=reset_between_checks):
+            sock = self.socket(self.clients[0])
+        self.assertEqual(calls, [self.ids[0], None])
+        self.assertFalse(sock.is_connected())
+        room = list(socketio.server.manager.get_participants("/", user_room(self.ids[0])))
+        self.assertEqual(room, [])
 
 
 if __name__ == "__main__":

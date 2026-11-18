@@ -36,18 +36,40 @@ def _emit(event, data, rooms):
         logger.exception("Realtime %s event could not be sent.", event)
 
 
+def disconnect_user(db, student_id):
+    """Close every socket of this user once `db` commits (e.g. password reset)."""
+    db.after_commit.append(lambda: _disconnect_room(user_room(student_id)))
+
+
+def _disconnect_room(room):
+    try:
+        sids = [sid for sid, _ in socketio.server.manager.get_participants("/", room)]
+        for sid in sids:
+            socketio.server.disconnect(sid, namespace="/")
+    except Exception:
+        logger.exception("Realtime sockets could not be disconnected.")
+
+
 def register_realtime(app, get_db):
     socketio.init_app(app)
 
     # Accept `auth` explicitly: Flask-SocketIO retries handlers that raise
     # TypeError without arguments, which would hide real errors.
-    @socketio.on("connect")
-    def connect(auth=None):
+    def verified_student():
         try:
             with get_db() as db:
-                student_id = session_student_id(db, session)
+                return session_student_id(db, session)
         except OperationalError:
             raise ConnectionRefusedError("unavailable") from None
+
+    @socketio.on("connect")
+    def connect(auth=None):
+        student_id = verified_student()
         if student_id is None:
             raise ConnectionRefusedError("unauthorized")
         join_room(user_room(student_id))
+        # Check again after joining. A password reset committing between the
+        # first check and the join would otherwise miss this socket in its
+        # disconnect sweep. Refusal removes the socket from every room.
+        if verified_student() != student_id:
+            raise ConnectionRefusedError("unauthorized")
