@@ -46,7 +46,7 @@ export function ConversationInbox() {
   const { items, error, loading } = useList(
     '/api/conversations',
     'conversations',
-    ['chat_message', 'request'],
+    ['chat_message', 'request', 'read'],
   )
   return (
     <section className="request-panel">

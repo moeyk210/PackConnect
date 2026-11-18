@@ -74,8 +74,10 @@ class RealtimeEventTests(PostgresTestCase):
         self.assertEqual(sent.status_code, 201)
         rest_row = self.bob.get(f"/api/requests/{request_id}/messages").get_json()["messages"][0]
         expected = ("chat_message", {"request_id": request_id, "message": rest_row})
-        self.assertIn(expected, self.events(0))  # sender's other tabs
-        self.assertCountEqual(self.events(1), [expected, ("notifications", {})])
+        # Bob's fetch also read the message, so both learn the new read position.
+        receipt = ("read", {"request_id": request_id, "reader_id": self.ids[1], "last_read_id": rest_row["id"]})
+        self.assertCountEqual(self.events(0), [expected, receipt])  # sender's other tabs
+        self.assertCountEqual(self.events(1), [expected, ("notifications", {}), receipt])
         self.assertEqual(self.events(2), [])
 
     def test_rejected_message_pushes_nothing(self):

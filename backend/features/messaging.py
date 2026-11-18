@@ -58,6 +58,27 @@ def create_messaging_blueprint(get_db):
                          (request_id, session["student_id"], session["student_id"])).fetchone()
         return dict(row) if row else None
 
+    def peer_of(record):
+        return record["recipient_id"] if record["sender_id"] == session["student_id"] else record["sender_id"]
+
+    def read_position(db, request_id, user_id):
+        row = db.execute("SELECT last_read_id FROM conversation_reads WHERE user_id = %s AND request_id = %s",
+                         (user_id, request_id)).fetchone()
+        return row["last_read_id"] if row else 0
+
+    def mark_read(db, record, through_id):
+        """Advance the reader's position; tell both participants only if it moved."""
+        reader = session["student_id"]
+        moved = db.execute("""
+            INSERT INTO conversation_reads (user_id, request_id, last_read_id) VALUES (%s, %s, %s)
+            ON CONFLICT (user_id, request_id) DO UPDATE SET last_read_id = EXCLUDED.last_read_id
+            WHERE conversation_reads.last_read_id < EXCLUDED.last_read_id
+            RETURNING last_read_id
+        """, (reader, record["id"], through_id)).fetchone()
+        if moved:
+            publish_pair(db, record["sender_id"], record["recipient_id"], reader, "read",
+                         {"request_id": record["id"], "reader_id": reader, "last_read_id": moved["last_read_id"]})
+
     @api.route("/api/requests", methods=["GET"])
     @authenticated
     def list_requests():
@@ -213,11 +234,32 @@ def create_messaging_blueprint(get_db):
             """, (request_id, int(after_id))).fetchall()
             visible = rows[:100]
             if visible:
-                db.execute("""INSERT INTO conversation_reads(user_id,request_id,last_read_id) VALUES(%s,%s,%s)
-                    ON CONFLICT(user_id,request_id) DO UPDATE SET last_read_id=GREATEST(conversation_reads.last_read_id,EXCLUDED.last_read_id)""",
-                    (session["student_id"],request_id,visible[-1]["id"]))
+                mark_read(db, record, visible[-1]["id"])
             record["contact_allowed"] = contact_allowed
-        return jsonify({"request": record, "messages": [dict(row) for row in visible], "has_more": len(rows) > 100})
+            peer_read = read_position(db, request_id, peer_of(record))
+        return jsonify({"request": record, "messages": [dict(row) for row in visible],
+                        "has_more": len(rows) > 100, "peer_last_read_id": peer_read})
+
+    @api.route("/api/requests/<int:request_id>/read", methods=["POST"])
+    @authenticated
+    def read_conversation(request_id):
+        data = request.get_json(silent=True)
+        through_id = data.get("through_id") if isinstance(data, dict) else None
+        if type(through_id) is not int or not 1 <= through_id <= 9223372036854775807:
+            return jsonify({"error": "Provide a valid message ID."}), 400
+        with request_database() as db:
+            record = get_request(db, request_id)
+            if record is None:
+                return jsonify({"error": "Conversation not found."}), 404
+            if record["status"] not in ("accepted", "completed", "closed"):
+                return jsonify({"error": "Chat unlocks when the request is accepted."}), 403
+            # Only messages that exist in this conversation can be marked read.
+            latest = db.execute("SELECT max(id) AS id FROM chat_messages WHERE request_id = %s AND id <= %s",
+                                (request_id, through_id)).fetchone()["id"]
+            if latest is not None:
+                mark_read(db, record, latest)
+            position = read_position(db, request_id, session["student_id"])
+        return jsonify({"last_read_id": position})
 
     @api.route("/api/notifications", methods=["GET"])
     @authenticated

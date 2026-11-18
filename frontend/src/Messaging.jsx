@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { api, json } from './messagingApi'
 import './Messaging.css'
 import MeetingPanel from './MeetingPanel'
@@ -279,6 +279,7 @@ export function Conversation({ requestId, user }) {
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
   const [reportedMessage, setReportedMessage] = useState(null)
+  const [peerRead, setPeerRead] = useState(0)
   const log = useRef(null)
   const connected = useRealtimeConnected()
   // Only fetched rows advance the cursor. Pushed rows are merged by ID, so a
@@ -309,6 +310,7 @@ export function Conversation({ requestId, user }) {
           if (controller.signal.aborted) return
           setRecord(data.request)
           setError('')
+          setPeerRead((read) => Math.max(read, data.peer_last_read_id ?? 0))
           if (data.messages.length) {
             cursor.current.id = data.messages[data.messages.length - 1].id
             setMessages((previous) => mergeMessages(previous, data.messages))
@@ -340,14 +342,47 @@ export function Conversation({ requestId, user }) {
       syncNow.current = null
     }
   }, [requestId, connected])
+  // Messages count as read only while this tab is visible; a hidden tab marks
+  // them read when the student comes back.
+  const unreadWhileHidden = useRef(0)
+  async function markRead(messageId) {
+    if (document.visibilityState !== 'visible') {
+      unreadWhileHidden.current = Math.max(unreadWhileHidden.current, messageId)
+      return
+    }
+    try {
+      await api(
+        `/api/requests/${requestId}/read`,
+        json('POST', { through_id: messageId }),
+      )
+    } catch {
+      // Not critical: the next history fetch records the read position too.
+    }
+  }
+  const markReadOnReturn = useEffectEvent(() => {
+    if (document.visibilityState !== 'visible' || !unreadWhileHidden.current)
+      return
+    const messageId = unreadWhileHidden.current
+    unreadWhileHidden.current = 0
+    markRead(messageId)
+  })
+  useEffect(() => {
+    const onVisibilityChange = () => markReadOnReturn()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () =>
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [])
   useRealtimeEvent('chat_message', (event) => {
     if (event.request_id !== requestId) return
     setMessages((previous) => mergeMessages(previous, [event.message]))
-    // Fetching a peer's message also records it as read (inbox unread counts).
-    if (event.message.sender_id !== user.id) syncNow.current?.()
+    if (event.message.sender_id !== user.id) markRead(event.message.id)
   })
   useRealtimeEvent('request', (event) => {
     if (event.request_id === requestId) syncNow.current?.() // status changed
+  })
+  useRealtimeEvent('read', (event) => {
+    if (event.request_id === requestId && event.reader_id !== user.id)
+      setPeerRead((read) => Math.max(read, event.last_read_id))
   })
   useEffect(() => {
     if (log.current) log.current.scrollTop = log.current.scrollHeight
@@ -373,6 +408,11 @@ export function Conversation({ requestId, user }) {
   const peerName =
     record &&
     (record.sender_id === user.id ? record.recipient_name : record.sender_name)
+  // "Seen" belongs on the student's own latest message only.
+  const lastOwnId = messages.reduce(
+    (latest, item) => (item.sender_id === user.id ? item.id : latest),
+    0,
+  )
   return (
     <section className="conversation">
       <a className="profile-back" href="#/app/requests">
@@ -454,6 +494,9 @@ export function Conversation({ requestId, user }) {
                       minute: '2-digit',
                     })}
                   </time>
+                  {item.id === lastOwnId && lastOwnId <= peerRead && (
+                    <span className="chat-seen">Seen</span>
+                  )}
                 </article>
               ))
             )}

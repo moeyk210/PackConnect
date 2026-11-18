@@ -126,6 +126,8 @@ describe('conversation inbox', () => {
     await waitFor(() => expect(calls('/api/conversations')).toBe(2))
     live.fire('request', { request_id: 7 })
     await waitFor(() => expect(calls('/api/conversations')).toBe(3))
+    live.fire('read', { request_id: 7, reader_id: 1, last_read_id: 9 })
+    await waitFor(() => expect(calls('/api/conversations')).toBe(4))
   })
 
   it('backfills on reconnect after polling while disconnected', async () => {

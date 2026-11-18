@@ -362,6 +362,10 @@ describe('realtime conversation', () => {
     fetch.mock.calls
       .map(([url]) => url)
       .filter((url) => url.startsWith('/api/requests/7/messages?'))
+  const reads = () =>
+    fetch.mock.calls
+      .filter(([url]) => url === '/api/requests/7/read')
+      .map(([, options]) => JSON.parse(options.body).through_id)
 
   afterEach(() => vi.useRealTimers())
 
@@ -380,7 +384,11 @@ describe('realtime conversation', () => {
 
     live.fire('chat_message', { request_id: 7, message: row(2, 'Pushed hi') })
     expect(screen.getByText('Pushed hi')).toBeInTheDocument()
-    // The push does not move the cursor; the follow-up fetch marks it read.
+    // A visible pushed message is marked read with one small POST, no fetch.
+    await waitFor(() => expect(reads()).toEqual([2]))
+    expect(gets()).toHaveLength(1)
+    // A push never moves the cursor: the next sync still starts after 1.
+    live.fire('request', { request_id: 7 })
     await waitFor(() =>
       expect(gets().at(-1)).toBe('/api/requests/7/messages?after_id=1'),
     )
@@ -464,5 +472,84 @@ describe('realtime conversation', () => {
       ).toHaveValue(''),
     )
     expect(screen.getAllByText('Only once')).toHaveLength(1)
+  })
+})
+
+describe('read receipts', () => {
+  const row = (id, body, sender_id = 2) => ({
+    id,
+    sender_id,
+    body,
+    created_at: request.created_at,
+  })
+  const page = (messages, peerRead = 0) =>
+    response({
+      request: { ...request, status: 'accepted' },
+      messages,
+      has_more: false,
+      peer_last_read_id: peerRead,
+    })
+  const reads = () =>
+    fetch.mock.calls
+      .filter(([url]) => url === '/api/requests/7/read')
+      .map(([, options]) => JSON.parse(options.body).through_id)
+  const seen = () => screen.queryAllByText('Seen')
+  const bubble = (text) => screen.getByText(text).closest('article')
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it('shows Seen only under my latest message the peer has read', async () => {
+    fetch.mockResolvedValueOnce(
+      page(
+        [
+          row(1, 'Mine first', student.id),
+          row(2, 'Mine last', student.id),
+          row(3, 'Theirs'),
+        ],
+        2,
+      ),
+    )
+    render(<Conversation requestId={7} user={student} />, {
+      wrapper: fakeRealtime().wrapper,
+    })
+    await screen.findByText('Mine last')
+    expect(seen()).toHaveLength(1)
+    expect(bubble('Mine last')).toHaveTextContent('Seen')
+    expect(bubble('Theirs')).not.toHaveTextContent('Seen')
+  })
+
+  it('updates Seen live from the peer and ignores my own read events', async () => {
+    fetch.mockResolvedValueOnce(page([row(4, 'Did you see this?', student.id)]))
+    const live = fakeRealtime()
+    render(<Conversation requestId={7} user={student} />, {
+      wrapper: live.wrapper,
+    })
+    await screen.findByText('Did you see this?')
+    expect(seen()).toHaveLength(0)
+    live.fire('read', { request_id: 7, reader_id: student.id, last_read_id: 4 })
+    live.fire('read', { request_id: 8, reader_id: 2, last_read_id: 4 })
+    expect(seen()).toHaveLength(0)
+    live.fire('read', { request_id: 7, reader_id: 2, last_read_id: 4 })
+    expect(bubble('Did you see this?')).toHaveTextContent('Seen')
+  })
+
+  it('marks pushed messages read only once the tab is visible', async () => {
+    fetch.mockResolvedValueOnce(page([]))
+    fetch.mockResolvedValue(response({ last_read_id: 0 }))
+    const live = fakeRealtime()
+    render(<Conversation requestId={7} user={student} />, {
+      wrapper: live.wrapper,
+    })
+    await screen.findByText("You're connected. Say hello!")
+    const visibility = vi
+      .spyOn(document, 'visibilityState', 'get')
+      .mockReturnValue('hidden')
+    live.fire('chat_message', { request_id: 7, message: row(5, 'While away') })
+    live.fire('chat_message', { request_id: 7, message: row(6, 'Still away') })
+    await act(async () => {})
+    expect(reads()).toEqual([])
+    visibility.mockReturnValue('visible')
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await waitFor(() => expect(reads()).toEqual([6]))
   })
 })
