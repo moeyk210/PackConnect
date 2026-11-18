@@ -28,12 +28,15 @@ def publish_pair(db, first, second, actor, event, data):
 
 
 def notify(db, user_id, actor_id, request_id, kind, event_key):
+    # A blocked pair never notifies each other, in either direction.
+    if blocked(db, user_id, actor_id):
+        return
     inserted = db.execute(
         """INSERT INTO notifications(user_id,actor_id,request_id,kind,event_key)
         VALUES (%s,%s,%s,%s,%s) ON CONFLICT(event_key) DO NOTHING""",
         (user_id, actor_id, request_id, kind, event_key),
     ).rowcount
-    if inserted and not blocked(db, user_id, actor_id):
+    if inserted:
         publish(db, [user_id], "notifications", {})
 
 

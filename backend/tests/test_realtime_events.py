@@ -128,6 +128,8 @@ class RealtimeEventTests(PostgresTestCase):
         self.assertEqual(self.events(0), [])
         with portal.get_db() as db:  # e.g. a late meeting cancellation by the blocked student
             notify(db, self.ids[1], self.ids[0], request_id, "meeting", "meeting:late:cancelled")
+            stored = db.execute("SELECT 1 FROM notifications WHERE event_key='meeting:late:cancelled'").fetchone()
+        self.assertIsNone(stored)
         self.assertEqual(self.events(1), [])
 
     def test_meeting_changes_reach_both_participants(self):
