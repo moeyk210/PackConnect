@@ -3,7 +3,11 @@ import { api, json } from './messagingApi'
 import './Messaging.css'
 import MeetingPanel from './MeetingPanel'
 import { ReportForm } from './Community'
-import { useRealtimeConnected, useRealtimeEvent } from './realtime'
+import {
+  useRealtimeConnected,
+  useRealtimeEmit,
+  useRealtimeEvent,
+} from './realtime'
 
 export function ConnectionRequestForm({
   student,
@@ -264,6 +268,9 @@ export function RequestInbox({
   )
 }
 
+const TYPING_SIGNAL_MS = 2000
+const TYPING_VISIBLE_MS = 5000
+
 function mergeMessages(previous, incoming) {
   return [
     ...new Map([...previous, ...incoming].map((m) => [m.id, m])).values(),
@@ -372,10 +379,37 @@ export function Conversation({ requestId, user }) {
     return () =>
       document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [])
+  // Typing: send at most one signal per 2 s; show the peer's for 5 s after
+  // their latest signal, or until their message arrives.
+  const emit = useRealtimeEmit()
+  const lastTypingSignal = useRef(0)
+  const [peerTyping, setPeerTyping] = useState(false)
+  const peerTypingTimer = useRef(null)
+  useEffect(() => () => clearTimeout(peerTypingTimer.current), [])
+  function signalTyping(value) {
+    const now = Date.now()
+    if (!value.trim() || now - lastTypingSignal.current < TYPING_SIGNAL_MS)
+      return
+    if (emit('typing', { request_id: requestId }))
+      lastTypingSignal.current = now
+  }
+  function stopPeerTyping() {
+    clearTimeout(peerTypingTimer.current)
+    setPeerTyping(false)
+  }
+  useRealtimeEvent('typing', (event) => {
+    if (event.request_id !== requestId || event.user_id === user.id) return
+    clearTimeout(peerTypingTimer.current)
+    setPeerTyping(true)
+    peerTypingTimer.current = setTimeout(stopPeerTyping, TYPING_VISIBLE_MS)
+  })
   useRealtimeEvent('chat_message', (event) => {
     if (event.request_id !== requestId) return
     setMessages((previous) => mergeMessages(previous, [event.message]))
-    if (event.message.sender_id !== user.id) markRead(event.message.id)
+    if (event.message.sender_id !== user.id) {
+      stopPeerTyping()
+      markRead(event.message.id)
+    }
   })
   useRealtimeEvent('request', (event) => {
     if (event.request_id === requestId) syncNow.current?.() // status changed
@@ -501,6 +535,9 @@ export function Conversation({ requestId, user }) {
               ))
             )}
           </div>
+          <p className="typing-indicator" aria-live="polite">
+            {peerTyping && peerName ? `${peerName} is typing…` : ''}
+          </p>
           {['completed', 'closed'].includes(record.status) ||
           record.contact_allowed === false ? (
             <p role="status">
@@ -519,7 +556,10 @@ export function Conversation({ requestId, user }) {
                 <textarea
                   id="chat-message"
                   value={body}
-                  onChange={(e) => setBody(e.target.value)}
+                  onChange={(e) => {
+                    setBody(e.target.value)
+                    signalTyping(e.target.value)
+                  }}
                   maxLength={2000}
                   rows={3}
                   placeholder="Write a message..."

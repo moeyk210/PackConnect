@@ -553,3 +553,72 @@ describe('read receipts', () => {
     await waitFor(() => expect(reads()).toEqual([6]))
   })
 })
+
+describe('typing indicator', () => {
+  const accepted = response({
+    request: { ...request, status: 'accepted' },
+    messages: [],
+    has_more: false,
+    peer_last_read_id: 0,
+  })
+  const typingSent = (live) => live.sent.filter(([event]) => event === 'typing')
+  const indicator = () => document.querySelector('.typing-indicator')
+
+  afterEach(() => vi.useRealTimers())
+
+  it('signals at most once per 2 s while typing, never when offline', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    fetch.mockResolvedValue(accepted)
+    const live = fakeRealtime()
+    render(<Conversation requestId={7} user={student} />, {
+      wrapper: live.wrapper,
+    })
+    const box = await screen.findByRole('textbox', {
+      name: 'Message to Sam Lee',
+    })
+    await user.type(box, '   ')
+    expect(typingSent(live)).toEqual([]) // whitespace is not typing
+    await user.type(box, 'Hello')
+    expect(typingSent(live)).toEqual([['typing', { request_id: 7 }]])
+    await act(() => vi.advanceTimersByTimeAsync(2000))
+    await user.type(box, '!')
+    expect(typingSent(live)).toHaveLength(2)
+    live.setConnected(false)
+    await act(() => vi.advanceTimersByTimeAsync(2000))
+    await user.type(box, '?')
+    expect(typingSent(live)).toHaveLength(2)
+  })
+
+  it("shows the peer's signal for 5 s and hides it when their message lands", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    fetch.mockResolvedValue(accepted)
+    const live = fakeRealtime()
+    render(<Conversation requestId={7} user={student} />, {
+      wrapper: live.wrapper,
+    })
+    await screen.findByRole('textbox', { name: 'Message to Sam Lee' })
+    live.fire('typing', { request_id: 7, user_id: student.id })
+    live.fire('typing', { request_id: 8, user_id: 2 })
+    expect(indicator()).toHaveTextContent('')
+    live.fire('typing', { request_id: 7, user_id: 2 })
+    expect(indicator()).toHaveTextContent('Sam Lee is typing…')
+    await act(() => vi.advanceTimersByTimeAsync(4000))
+    live.fire('typing', { request_id: 7, user_id: 2 }) // extends the window
+    await act(() => vi.advanceTimersByTimeAsync(4000))
+    expect(indicator()).toHaveTextContent('Sam Lee is typing…')
+    await act(() => vi.advanceTimersByTimeAsync(1000))
+    expect(indicator()).toHaveTextContent('')
+    live.fire('typing', { request_id: 7, user_id: 2 })
+    live.fire('chat_message', {
+      request_id: 7,
+      message: {
+        id: 9,
+        sender_id: 2,
+        body: 'Done typing',
+        created_at: request.created_at,
+      },
+    })
+    expect(indicator()).toHaveTextContent('')
+  })
+})

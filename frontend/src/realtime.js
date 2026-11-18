@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useEffectEvent,
@@ -72,6 +73,20 @@ export function useRealtimeConnected() {
   return useSyncExternalStore(
     connection ? connection.subscribe : noSubscription,
     connection ? connection.isConnected : offline,
+  )
+}
+
+// Returns emit(event, data): sends only while connected and reports whether it
+// sent. Nothing is queued; signals sent offline would only arrive stale.
+export function useRealtimeEmit() {
+  const connection = useContext(RealtimeContext)
+  return useCallback(
+    (event, data) => {
+      if (!connection?.isConnected()) return false
+      connection.socket.emit(event, data)
+      return true
+    },
+    [connection],
   )
 }
 

@@ -139,6 +139,13 @@
   color: #8f8175;
   text-align: right;
 }
+.typing-indicator {
+  min-height: 18px; /* reserve space so the composer does not jump */
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-style: italic;
+  color: #8f8175;
+}
 .chat-seen {
   display: block;
   font-size: 10px;
