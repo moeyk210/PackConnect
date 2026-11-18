@@ -3,6 +3,7 @@ import { api, json } from './messagingApi'
 import './Messaging.css'
 import MeetingPanel from './MeetingPanel'
 import { ReportForm } from './Community'
+import { useRealtimeConnected, useRealtimeEvent } from './realtime'
 
 export function ConnectionRequestForm({
   student,
@@ -263,6 +264,12 @@ export function RequestInbox({
   )
 }
 
+function mergeMessages(previous, incoming) {
+  return [
+    ...new Map([...previous, ...incoming].map((m) => [m.id, m])).values(),
+  ].sort((a, b) => a.id - b.id)
+}
+
 export function Conversation({ requestId, user }) {
   const [record, setRecord] = useState(null)
   const [messages, setMessages] = useState([])
@@ -273,45 +280,75 @@ export function Conversation({ requestId, user }) {
   const [sending, setSending] = useState(false)
   const [reportedMessage, setReportedMessage] = useState(null)
   const log = useRef(null)
+  const connected = useRealtimeConnected()
+  // Only fetched rows advance the cursor. Pushed rows are merged by ID, so a
+  // message missed while disconnected can never fall behind the cursor.
+  const cursor = useRef({ requestId, id: 0 })
+  const syncNow = useRef(null)
   useEffect(() => {
+    if (cursor.current.requestId !== requestId)
+      cursor.current = { requestId, id: 0 }
     const controller = new AbortController()
-    let cursor = 0
     let timer
-    async function poll() {
+    let running = false
+    let again = false
+    async function sync() {
+      if (running) {
+        again = true
+        return
+      }
+      running = true
+      clearTimeout(timer)
       try {
-        const data = await api(
-          `/api/requests/${requestId}/messages?after_id=${cursor}`,
-          { signal: controller.signal },
-        )
-        if (controller.signal.aborted) return
-        setRecord(data.request)
-        setError('')
-        if (data.messages.length) {
-          cursor = data.messages[data.messages.length - 1].id
-          setMessages((previous) =>
-            [
-              ...new Map(
-                [...previous, ...data.messages].map((m) => [m.id, m]),
-              ).values(),
-            ].sort((a, b) => a.id - b.id),
+        let data
+        do {
+          data = await api(
+            `/api/requests/${requestId}/messages?after_id=${cursor.current.id}`,
+            { signal: controller.signal },
           )
-        }
+          if (controller.signal.aborted) return
+          setRecord(data.request)
+          setError('')
+          if (data.messages.length) {
+            cursor.current.id = data.messages[data.messages.length - 1].id
+            setMessages((previous) => mergeMessages(previous, data.messages))
+          }
+        } while (data.has_more)
         setLoading(false)
-        timer = setTimeout(poll, data.has_more ? 0 : 3000)
+        // Polling is only the fallback while the socket is down.
+        if (!connected) timer = setTimeout(sync, 3000)
       } catch (err) {
         if (!controller.signal.aborted) {
           setError(err.message)
           setLoading(false)
-          timer = setTimeout(poll, 5000)
+          timer = setTimeout(sync, 5000)
+        }
+      } finally {
+        running = false
+        if (again && !controller.signal.aborted) {
+          again = false
+          sync()
         }
       }
     }
-    poll()
+    syncNow.current = sync
+    // Runs on open, and on every (re)connect to backfill anything missed.
+    sync()
     return () => {
       controller.abort()
       clearTimeout(timer)
+      syncNow.current = null
     }
-  }, [requestId])
+  }, [requestId, connected])
+  useRealtimeEvent('chat_message', (event) => {
+    if (event.request_id !== requestId) return
+    setMessages((previous) => mergeMessages(previous, [event.message]))
+    // Fetching a peer's message also records it as read (inbox unread counts).
+    if (event.message.sender_id !== user.id) syncNow.current?.()
+  })
+  useRealtimeEvent('request', (event) => {
+    if (event.request_id === requestId) syncNow.current?.() // status changed
+  })
   useEffect(() => {
     if (log.current) log.current.scrollTop = log.current.scrollHeight
   }, [messages.length])
@@ -325,13 +362,7 @@ export function Conversation({ requestId, user }) {
         `/api/requests/${requestId}/messages`,
         json('POST', { body }),
       )
-      setMessages((previous) =>
-        [
-          ...new Map(
-            [...previous, data.message].map((m) => [m.id, m]),
-          ).values(),
-        ].sort((a, b) => a.id - b.id),
-      )
+      setMessages((previous) => mergeMessages(previous, [data.message]))
       setBody('')
     } catch (err) {
       setSendError(err.message)

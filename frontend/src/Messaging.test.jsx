@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConnectionRequestForm, RequestInbox, Conversation } from './Messaging'
 import { deferred, request, response, student } from './test/fixtures'
+import { fakeRealtime } from './test/realtime'
 
 vi.mock('./MeetingPanel', () => ({ default: () => null }))
 
@@ -344,5 +345,124 @@ describe('accepted-request conversation', () => {
     expect(
       screen.queryByRole('button', { name: 'Send message' }),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe('realtime conversation', () => {
+  const accepted = { ...request, status: 'accepted' }
+  const row = (id, body, sender_id = 2) => ({
+    id,
+    sender_id,
+    body,
+    created_at: request.created_at,
+  })
+  const page = (messages, extra = {}) =>
+    response({ request: { ...accepted, ...extra }, messages, has_more: false })
+  const gets = () =>
+    fetch.mock.calls
+      .map(([url]) => url)
+      .filter((url) => url.startsWith('/api/requests/7/messages?'))
+
+  afterEach(() => vi.useRealTimers())
+
+  it('renders pushed messages instantly and never polls while connected', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    fetch
+      .mockResolvedValueOnce(page([row(1, 'Saved hello')]))
+      .mockResolvedValue(page([]))
+    const live = fakeRealtime()
+    render(<Conversation requestId={7} user={student} />, {
+      wrapper: live.wrapper,
+    })
+    expect(await screen.findByText('Saved hello')).toBeInTheDocument()
+    await act(() => vi.advanceTimersByTimeAsync(30000))
+    expect(gets()).toEqual(['/api/requests/7/messages?after_id=0'])
+
+    live.fire('chat_message', { request_id: 7, message: row(2, 'Pushed hi') })
+    expect(screen.getByText('Pushed hi')).toBeInTheDocument()
+    // The push does not move the cursor; the follow-up fetch marks it read.
+    await waitFor(() =>
+      expect(gets().at(-1)).toBe('/api/requests/7/messages?after_id=1'),
+    )
+
+    live.fire('chat_message', { request_id: 99, message: row(3, 'Elsewhere') })
+    expect(screen.queryByText('Elsewhere')).not.toBeInTheDocument()
+    const before = gets().length
+    live.fire('chat_message', {
+      request_id: 7,
+      message: row(4, 'From my other tab', student.id),
+    })
+    expect(screen.getByText('From my other tab')).toBeInTheDocument()
+    await act(() => vi.advanceTimersByTimeAsync(10000))
+    expect(gets()).toHaveLength(before) // own messages need no fetch
+  })
+
+  it('polls while disconnected and backfills missed messages on reconnect', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    fetch.mockResolvedValueOnce(page([row(1, 'First')]))
+    fetch.mockResolvedValue(page([]))
+    const live = fakeRealtime()
+    render(<Conversation requestId={7} user={student} />, {
+      wrapper: live.wrapper,
+    })
+    await screen.findByText('First')
+    live.setConnected(false)
+    await waitFor(() => expect(gets()).toHaveLength(2))
+    await act(() => vi.advanceTimersByTimeAsync(3000))
+    await waitFor(() => expect(gets()).toHaveLength(3)) // 3 s fallback poll
+
+    fetch.mockResolvedValueOnce(page([row(2, 'Missed while offline')]))
+    live.setConnected(true)
+    expect(await screen.findByText('Missed while offline')).toBeInTheDocument()
+    expect(gets().at(-1)).toBe('/api/requests/7/messages?after_id=1')
+    const afterBackfill = gets().length
+    await act(() => vi.advanceTimersByTimeAsync(30000))
+    expect(gets()).toHaveLength(afterBackfill)
+    const log = screen.getByRole('log')
+    expect(log.textContent.indexOf('First')).toBeLessThan(
+      log.textContent.indexOf('Missed while offline'),
+    )
+  })
+
+  it('refreshes the conversation when its request changes', async () => {
+    fetch.mockResolvedValueOnce(page([row(1, 'Hello')]))
+    const live = fakeRealtime()
+    render(<Conversation requestId={7} user={student} />, {
+      wrapper: live.wrapper,
+    })
+    await screen.findByText('Hello')
+    fetch.mockResolvedValueOnce(page([], { status: 'completed' }))
+    live.fire('request', { request_id: 8 })
+    live.fire('request', { request_id: 7 })
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Message history is read-only',
+    )
+    expect(gets()).toHaveLength(2)
+  })
+
+  it('shows a sent message once when the push and the reply both arrive', async () => {
+    const user = userEvent.setup()
+    fetch.mockResolvedValueOnce(page([]))
+    const live = fakeRealtime()
+    render(<Conversation requestId={7} user={student} />, {
+      wrapper: live.wrapper,
+    })
+    await screen.findByText("You're connected. Say hello!")
+    const pending = deferred()
+    fetch.mockReturnValueOnce(pending.promise)
+    await user.type(
+      screen.getByRole('textbox', { name: 'Message to Sam Lee' }),
+      'Only once',
+    )
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    const sent = row(5, 'Only once', student.id)
+    live.fire('chat_message', { request_id: 7, message: sent })
+    pending.resolve(response({ message: sent }, 201))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('textbox', { name: 'Message to Sam Lee' }),
+      ).toHaveValue(''),
+    )
+    expect(screen.getAllByText('Only once')).toHaveLength(1)
   })
 })
