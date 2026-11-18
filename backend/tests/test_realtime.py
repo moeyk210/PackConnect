@@ -80,6 +80,21 @@ class RealtimeConnectionTests(PostgresTestCase):
         fresh.post("/api/auth/login", json={"email": "alice@example.edu", "password": new_password})
         self.assertTrue(self.socket(fresh).is_connected())
 
+    def test_logout_disconnects_only_that_browsers_sockets(self):
+        phone_client = portal.app.test_client()
+        phone_client.post("/api/auth/login", json={"email": "alice@example.edu",
+                                                   "password": "a long test password"})
+        stolen = self.clients[0].get_cookie("session").value
+        laptop_tabs = [self.socket(self.clients[0]), self.socket(self.clients[0])]
+        phone, blake = self.socket(phone_client), self.socket(self.clients[1])
+        self.assertEqual(self.clients[0].post("/api/auth/logout").status_code, 200)
+        self.assertEqual([tab.is_connected() for tab in laptop_tabs], [False, False])
+        self.assertTrue(phone.is_connected())
+        self.assertTrue(blake.is_connected())
+        thief = portal.app.test_client()
+        thief.set_cookie("session", stolen)
+        self.assertFalse(self.socket(thief).is_connected())
+
     def test_failed_reset_disconnects_nobody(self):
         alice = self.socket(self.clients[0])
         self.reset_token()

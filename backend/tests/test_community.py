@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import app as portal
 from features.lifecycle import expire_requests
-from tests.postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase, sign_in
 
 
 class CommunityTests(PostgresTestCase):
@@ -33,8 +33,7 @@ class CommunityTests(PostgresTestCase):
                 self.ids.append(student)
         for student in self.ids:
             client = portal.app.test_client()
-            with client.session_transaction() as sess:
-                sess["student_id"] = student
+            sign_in(client, student)
             self.clients.append(client)
         self.alice, self.bob, self.carol = self.clients
         self.payload = {

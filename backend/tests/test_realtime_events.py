@@ -8,7 +8,7 @@ import psycopg
 import app as portal
 from core.realtime import publish, socketio
 from features.lifecycle import notify
-from tests.postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase, sign_in
 
 
 class RealtimeEventTests(PostgresTestCase):
@@ -26,8 +26,7 @@ class RealtimeEventTests(PostgresTestCase):
                 self.ids.append(student)
         for student in self.ids:
             client = portal.app.test_client()
-            with client.session_transaction() as sess:
-                sess["student_id"] = student
+            sign_in(client, student)
             sock = socketio.test_client(portal.app, flask_test_client=client)
             self.assertTrue(sock.is_connected())
             self.addCleanup(lambda s=sock: s.is_connected() and s.disconnect())
