@@ -1,0 +1,113 @@
+/* Conversation inbox, laid out like other messaging apps: compact rows with an
+   avatar, name and time, one-line preview, and an unread count. */
+.inbox-list {
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.inbox-list li + li {
+  border-top: 1px solid #f0f0f2;
+}
+.inbox-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  box-sizing: border-box;
+  padding: 10px 16px;
+  color: inherit;
+  text-decoration: none;
+}
+.inbox-row:hover {
+  background: #faf7f5;
+}
+.inbox-row:focus-visible {
+  outline: 2px solid #cc0000;
+  outline-offset: -2px;
+}
+.inbox-avatar {
+  display: grid;
+  flex: 0 0 40px;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #bc2631;
+  font-size: 15px;
+  font-weight: 700;
+}
+.inbox-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0; /* lets the preview truncate instead of widening the row */
+}
+.inbox-top,
+.inbox-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.inbox-name {
+  flex: 1;
+  overflow: hidden;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inbox-top time {
+  flex-shrink: 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+.inbox-context {
+  overflow: hidden;
+  color: #6b7280;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inbox-status {
+  text-transform: capitalize;
+}
+.inbox-preview {
+  flex: 1;
+  overflow: hidden;
+  color: #6b7280;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inbox-unread {
+  flex-shrink: 0;
+  min-width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #cc0000;
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+.inbox-row.unread .inbox-name {
+  font-weight: 700;
+}
+.inbox-row.unread .inbox-preview {
+  color: #111827;
+  font-weight: 600;
+}
+.inbox-row.unread .inbox-top time {
+  color: #cc0000;
+  font-weight: 600;
+}

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
 import {
@@ -29,12 +35,87 @@ it('shows private conversation previews, unread counts, and links', async () => 
     }),
   )
   render(<ConversationInbox />)
-  expect(await screen.findByRole('link', { name: 'Sam Lee' })).toHaveAttribute(
-    'href',
-    '#/app/chat/7',
-  )
+  const row = await screen.findByRole('link', { name: /Sam Lee/ })
+  expect(row).toHaveAttribute('href', '#/app/chat/7')
+  expect(row).toHaveClass('unread')
   expect(screen.getByText('Some advice')).toBeInTheDocument()
-  expect(screen.getByText('2 unread')).toBeInTheDocument()
+  expect(screen.getByText('2 unread')).toHaveClass('visually-hidden')
+  expect(screen.getByText('SL')).toHaveAttribute('aria-hidden', 'true')
+})
+
+it('labels inbox times like a messaging app and caps large unread counts', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(2026, 10, 18, 15) })
+  const conversation = (id, peer_name, updated, extra = {}) => ({
+    id,
+    peer_name,
+    course_code: 'CSC 510',
+    advice_topic: 'Projects',
+    latest_message: 'Hi',
+    unread_count: 0,
+    status: 'accepted',
+    updated_at: updated.toISOString(),
+    ...extra,
+  })
+  fetch.mockResolvedValue(
+    response({
+      conversations: [
+        conversation(1, 'Today Person', new Date(2026, 10, 18, 9, 5), {
+          unread_count: 150,
+        }),
+        conversation(2, 'Yesterday Person', new Date(2026, 10, 17, 23, 0)),
+        conversation(3, 'Week Person', new Date(2026, 10, 14, 12, 0)),
+        conversation(4, 'Old Person', new Date(2026, 9, 3, 12, 0), {
+          status: 'completed',
+        }),
+        conversation(5, 'Last Year', new Date(2025, 0, 2, 12, 0)),
+      ],
+    }),
+  )
+  try {
+    render(<ConversationInbox />)
+    const row = async (name) =>
+      within(await screen.findByRole('link', { name: new RegExp(name) }))
+    const time = (date, options) => date.toLocaleDateString([], options)
+    expect(
+      (await row('Today Person')).getByText(
+        new Date(2026, 10, 18, 9, 5).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+        }),
+      ),
+    ).toBeInTheDocument()
+    expect((await row('Today Person')).getByText('99+')).toBeInTheDocument()
+    expect(
+      (await row('Today Person')).getByText('150 unread'),
+    ).toBeInTheDocument()
+    expect(
+      (await row('Yesterday Person')).getByText('Yesterday'),
+    ).toBeInTheDocument()
+    expect(
+      (await row('Week Person')).getByText(
+        time(new Date(2026, 10, 14), { weekday: 'short' }),
+      ),
+    ).toBeInTheDocument()
+    const old = await row('Old Person')
+    expect(
+      old.getByText(
+        time(new Date(2026, 9, 3), { month: 'short', day: 'numeric' }),
+      ),
+    ).toBeInTheDocument()
+    expect(old.getByText(/completed/)).toBeInTheDocument()
+    expect((await row('Week Person')).queryByText(/accepted/)).toBeNull()
+    expect(
+      (await row('Last Year')).getByText(
+        time(new Date(2025, 0, 2), {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        }),
+      ),
+    ).toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 it('submits a report with the selected message as evidence', async () => {

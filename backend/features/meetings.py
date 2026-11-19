@@ -6,7 +6,7 @@ from functools import wraps
 from flask import Blueprint, Response, jsonify, request, session
 from psycopg.errors import UniqueViolation
 from core.identity import session_student_id
-from features.lifecycle import blocked, lock_students, notify
+from features.lifecycle import blocked, lock_students, notify, publish_pair
 
 
 def calendar_escape(value):
@@ -107,6 +107,7 @@ def create_meetings_blueprint(get_db):
             else record["sender_id"]
         )
         notify(db, peer, user, record["id"], "meeting", f"meeting:{row['id']}:proposed")
+        publish_pair(db, record["sender_id"], record["recipient_id"], user, "meeting", {"request_id": record["id"]})
         return jsonify(meeting=dict(row)), 201
 
     @api.patch("/api/requests/<int:request_id>/meetings/<int:meeting_id>")
@@ -179,6 +180,7 @@ def create_meetings_blueprint(get_db):
                 "meeting",
                 f"meeting:{meeting_id}:{status}",
             )
+            publish_pair(db, record["sender_id"], record["recipient_id"], user, "meeting", {"request_id": record["id"]})
         return jsonify(status=status)
 
     @api.get("/api/requests/<int:request_id>/meetings/<int:meeting_id>/calendar.ics")

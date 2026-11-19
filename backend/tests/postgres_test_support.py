@@ -9,8 +9,18 @@ from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict
 
 import app as portal
+from core.identity import create_auth_session
 from scripts.migrate import MIGRATIONS, migration_sql
 from tests.test_seeds import seed_students
+
+
+def sign_in(client, student_id):
+    """Give a test client a real server-side session, as login would."""
+    with portal.get_db() as db:
+        session_id = create_auth_session(db, student_id)
+    with client.session_transaction() as session:
+        session["student_id"] = student_id
+        session["session_id"] = session_id
 
 
 class PostgresTestCase(unittest.TestCase):

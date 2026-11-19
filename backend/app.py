@@ -9,10 +9,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from pathlib import Path
 from features.messaging import create_messaging_blueprint, initialize_messaging
 from core.database import connect_database
-from core.identity import registered_student_sql, session_student_id
+from core.realtime import disconnect_session, register_realtime, socketio
+from core.identity import create_auth_session, registered_student_sql, revoke_auth_session, session_student_id
 from features.community import create_community_blueprint
 from features.meetings import create_meetings_blueprint
 from features.recovery import create_recovery_blueprint
+from features.typing import register_typing
 from features.lifecycle import lock_students
 from features.availability import availability_payload, workload_join, availability_columns, availability_status_sql
 
@@ -72,6 +74,8 @@ app.register_blueprint(create_messaging_blueprint(get_db))
 app.register_blueprint(create_community_blueprint(get_db))
 app.register_blueprint(create_meetings_blueprint(get_db))
 app.register_blueprint(create_recovery_blueprint(get_db))
+register_realtime(app, get_db)
+register_typing(get_db)
 
 
 def normalize_courses(courses):
@@ -248,11 +252,13 @@ def login():
         if account and db.execute("SELECT password_hash FROM accounts WHERE student_id=%s",(student_id,)).fetchone()["password_hash"] != account["password_hash"]:
             return jsonify(error="Your password changed during sign-in. Please try again."),401
         student = fetch_student(db, student_id)
+        session_id = create_auth_session(db, student_id) if student else None
     if student is None:
         return jsonify({"error": "This account has no student profile."}), 401
     session.clear()
     session.permanent = True
     session["student_id"] = student["id"]
+    session["session_id"] = session_id
     session["auth_version"] = version["session_version"]
     if auth_user_id:
         session["auth_user_id"] = auth_user_id
@@ -271,6 +277,13 @@ def current_user():
 
 @app.route("/api/auth/logout", methods=["POST"])
 def logout():
+    # Revoke server-side so a copied cookie stops working, and close this
+    # browser's sockets. Other signed-in devices are unaffected.
+    session_id = session.get("session_id")
+    if isinstance(session_id, str):
+        with get_db() as db:
+            revoke_auth_session(db, session_id)
+            disconnect_session(db, session_id)
     session.clear()
     return jsonify({"status": "ok"})
 
@@ -512,4 +525,7 @@ def send_message(student_id):
 
 if __name__ == "__main__":
     initialize_database()
-    app.run(debug=True, port=5000)
+    # socketio.run wraps the Werkzeug development server and adds WebSocket
+    # support. Flask-SocketIO refuses Werkzeug when stdin is not a terminal
+    # (IDE run buttons, background shells); this block is development-only.
+    socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True)

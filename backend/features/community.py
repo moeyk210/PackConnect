@@ -4,6 +4,7 @@ from functools import wraps
 
 from flask import Blueprint, jsonify, request, session
 from core.identity import session_student_id
+from core.realtime import publish
 from features.lifecycle import blocked, expire_requests, lock_students
 
 
@@ -71,11 +72,16 @@ def create_community_blueprint(get_db):
                 "INSERT INTO student_blocks(blocker_id,blocked_id) VALUES(%s,%s) ON CONFLICT DO NOTHING",
                 (user, student_id),
             )
-            db.execute(
+            closed = db.execute(
                 """UPDATE advice_requests SET status='closed' WHERE status IN ('pending','accepted')
-                AND ((sender_id=%s AND recipient_id=%s) OR (sender_id=%s AND recipient_id=%s))""",
+                AND ((sender_id=%s AND recipient_id=%s) OR (sender_id=%s AND recipient_id=%s))
+                RETURNING id""",
                 (user, student_id, student_id, user),
-            )
+            ).fetchall()
+            # Only the blocker is told; the blocked student receives no events.
+            for row in closed:
+                for event in ("request", "meeting"):
+                    publish(db, [user], event, {"request_id": row["id"]})
             db.execute(
                 """UPDATE advice_meetings m SET status='cancelled' FROM advice_requests r
                 WHERE m.request_id=r.id AND m.status IN ('proposed','accepted') AND m.ends_at>now()

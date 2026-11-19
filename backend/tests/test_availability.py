@@ -5,7 +5,7 @@ from datetime import timedelta
 from threading import Barrier
 
 import app as portal
-from tests.postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase, sign_in
 
 
 class AdvisorAvailabilityTests(PostgresTestCase):
@@ -24,8 +24,7 @@ class AdvisorAvailabilityTests(PostgresTestCase):
                 self.ids.append(student_id)
         for student_id in self.ids:
             client = portal.app.test_client()
-            with client.session_transaction() as session:
-                session["student_id"] = student_id
+            sign_in(client, student_id)
             self.clients.append(client)
         self.advisor = self.clients[0]
         self.profile_payload = {"name": "Advisor", "program": "CS", "year": "1",

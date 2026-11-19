@@ -31,8 +31,9 @@ All endpoints below require a signed-in account; missing sessions return 401.
 | GET | `/api/requests` | Incoming/outgoing requests belonging to the signed-in user |
 | POST | `/api/requests` | Body: `recipient_id`, `course_code` (1–30 chars), `advice_topic` (1–80), `message` (1–1000) |
 | PATCH | `/api/requests/<id>` | Body: `status` of `accepted` or `declined`; recipient only |
-| GET | `/api/requests/<id>/messages?after_id=0` | Accepted conversation metadata and next 100 messages; `has_more` indicates another batch |
+| GET | `/api/requests/<id>/messages?after_id=0` | Accepted conversation metadata and next 100 messages; `has_more` indicates another batch; `peer_last_read_id` is the other participant's read position. Fetching marks the returned messages read |
 | POST | `/api/requests/<id>/messages` | Body: `body` (1–2000 chars); verified sender ID added by the backend |
+| POST | `/api/requests/<id>/read` | Body: `through_id`; marks messages up to that ID read (capped to this conversation's messages, never moves backwards) |
 
 An unrelated user receives 404 for private resources. A participant attempting
 to chat before acceptance receives 403. Duplicate active requests return 409,
@@ -42,8 +43,10 @@ Repeating the same decision is idempotent; changing a completed decision returns
 
 Chat history is ordered by message ID and retrieved incrementally. Both request
 participants can send messages; no third account can join. Original request text
-is displayed as conversation context. The frontend polls chats every three
-seconds and refreshes request lists on navigation and every eight seconds.
+is displayed as conversation context. New messages, request changes, read
+receipts, and typing indicators arrive over the real-time channel; chats poll
+every three seconds and request lists every eight seconds only while it is
+down. See [real-time messaging](REALTIME_MESSAGING.md).
 
 ## Existing messages
 
@@ -71,8 +74,9 @@ creation, recipient acceptance, two-way polling chat, refresh persistence,
 third-user denial, and mobile layout.
 
 In-app bell notifications cover requests, decisions, and new messages. This
-implementation has no email/push notifications, read receipts, attachments,
-blocking, or message deletion. It uses polling, not WebSockets. Access is private
+implementation has no email or operating-system push notifications,
+attachments, or message deletion. Read receipts and typing indicators are always
+on. Updates use WebSockets with a polling fallback. Access is private
 at the application API level; this does not claim end-to-end encryption. Configure
 a persistent private `FLASK_SECRET_KEY` for sessions across backend restarts and
 HTTPS with `COOKIE_SECURE=true` for deployment, as described in README.
@@ -88,6 +92,7 @@ Authentication is required. Other users' notification IDs return 404. Notificati
 creation shares the request/decision/message transaction; repeated decisions do
 not generate duplicate alerts. Existing pending requests and completed decisions
 are backfilled using unique event keys, preserving read state on later startups.
-The frontend polls every five seconds, marks clicked alerts read, and supports
+The bell refreshes when the server pushes a change (polling every five seconds
+only while the real-time channel is down), marks clicked alerts read, and supports
 outside-click/Escape dismissal. New-message alerts link to the accepted chat;
 request-received alerts open Incoming and declined decisions open Outgoing.
