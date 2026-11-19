@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, json } from './messagingApi'
 import { useRealtimeConnected, useRealtimeEvent } from './realtime'
+import './Inbox.css'
 
 // Lists with `events` are refreshed by pushes while the socket is connected
 // and poll only as a fallback. Lists without events keep polling (no pushes
@@ -48,6 +49,7 @@ export function ConversationInbox() {
     'conversations',
     ['chat_message', 'request', 'read'],
   )
+  const now = new Date()
   return (
     <section className="request-panel">
       <h2>Conversations</h2>
@@ -57,37 +59,82 @@ export function ConversationInbox() {
       ) : !items.length ? (
         <p>No conversations yet. Accept an advice request to start chatting.</p>
       ) : (
-        <div className="request-list">
-          {items.map((item) => (
-            <article className="request-card" key={item.id}>
-              <div>
-                <a href={`#/app/chat/${item.id}`}>
-                  <strong>{item.peer_name}</strong>
+        // Messaging-app inbox rows: avatar, name and time, one-line preview,
+        // and an unread count; the whole row opens the chat.
+        <ul className="inbox-list">
+          {items.map((item) => {
+            const unread = Number(item.unread_count)
+            const updated = new Date(item.updated_at)
+            return (
+              <li key={item.id}>
+                <a
+                  className={unread > 0 ? 'inbox-row unread' : 'inbox-row'}
+                  href={`#/app/chat/${item.id}`}
+                >
+                  <span className="inbox-avatar" aria-hidden="true">
+                    {initials(item.peer_name)}
+                  </span>
+                  <span className="inbox-main">
+                    <span className="inbox-top">
+                      <strong className="inbox-name">{item.peer_name}</strong>
+                      <time
+                        dateTime={item.updated_at}
+                        title={updated.toLocaleString()}
+                      >
+                        {inboxTime(updated, now)}
+                      </time>
+                    </span>
+                    <span className="inbox-context">
+                      {item.course_code} · {item.advice_topic}
+                      {item.status !== 'accepted' && (
+                        <span className="inbox-status"> · {item.status}</span>
+                      )}
+                    </span>
+                    <span className="inbox-bottom">
+                      <span className="inbox-preview">
+                        {item.latest_message || 'Start the conversation.'}
+                      </span>
+                      {unread > 0 && (
+                        <span className="inbox-unread">
+                          <span aria-hidden="true">
+                            {unread > 99 ? '99+' : unread}
+                          </span>
+                          <span className="visually-hidden">
+                            {unread} unread
+                          </span>
+                        </span>
+                      )}
+                    </span>
+                  </span>
                 </a>
-                <p>
-                  {item.course_code} · {item.advice_topic}
-                </p>
-                <p className="preserve-lines">
-                  {item.latest_message || 'Start the conversation.'}
-                </p>
-                <time dateTime={item.updated_at}>
-                  {new Date(item.updated_at).toLocaleString()}
-                </time>
-                <span className={`status-badge ${item.status}`}>
-                  {item.status}
-                </span>
-              </div>
-              {Number(item.unread_count) > 0 && (
-                <span className="available-badge">
-                  {item.unread_count} unread
-                </span>
-              )}
-            </article>
-          ))}
-        </div>
+              </li>
+            )
+          })}
+        </ul>
       )}
     </section>
   )
+}
+
+function initials(name) {
+  const parts = (name || '?').trim().split(/\s+/)
+  return (parts[0][0] + (parts.length > 1 ? parts.at(-1)[0] : '')).toUpperCase()
+}
+
+// Inbox times read like other messaging apps: a time today, then
+// "Yesterday", a weekday within the week, and a date after that.
+function inboxTime(date, now) {
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const days = Math.round((startOfDay(now) - startOfDay(date)) / 86400000)
+  if (days <= 0)
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  if (days === 1) return 'Yesterday'
+  if (days < 7) return date.toLocaleDateString([], { weekday: 'short' })
+  return date.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    ...(date.getFullYear() !== now.getFullYear() && { year: 'numeric' }),
+  })
 }
 
 export function ReportForm({ studentId, messageId, onClose }) {
