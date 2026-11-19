@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 import { api, json } from './messagingApi'
 import './Messaging.css'
 import MeetingPanel from './MeetingPanel'
@@ -270,6 +270,122 @@ export function RequestInbox({
 
 const TYPING_SIGNAL_MS = 2000
 const TYPING_VISIBLE_MS = 5000
+// Consecutive messages from one sender within this gap form a visual run.
+const RUN_GAP_MS = 5 * 60 * 1000
+
+function sameRun(a, b) {
+  return (
+    Boolean(a && b) &&
+    a.sender_id === b.sender_id &&
+    Math.abs(new Date(b.created_at) - new Date(a.created_at)) < RUN_GAP_MS
+  )
+}
+
+function runPosition(previous, item, next) {
+  const joinsPrevious = sameRun(previous, item)
+  const joinsNext = sameRun(item, next)
+  if (joinsPrevious && joinsNext) return 'middle'
+  if (joinsPrevious) return 'last'
+  if (joinsNext) return 'first'
+  return 'single'
+}
+
+// A "more actions" menu button (WAI-ARIA APG menu button pattern): Enter or
+// Space opens it and focuses the first item, arrows move between items,
+// Escape closes it and returns focus to the button, Tab closes it.
+function MessageActions({ label, actions }) {
+  const [open, setOpen] = useState(false)
+  const button = useRef(null)
+  const menu = useRef(null)
+  const buttonId = useId()
+  const menuId = useId()
+  useEffect(() => {
+    if (!open) return undefined
+    menu.current?.querySelector('[role="menuitem"]')?.focus()
+    function outside(event) {
+      if (
+        !menu.current?.contains(event.target) &&
+        !button.current?.contains(event.target)
+      )
+        setOpen(false)
+    }
+    document.addEventListener('pointerdown', outside)
+    return () => document.removeEventListener('pointerdown', outside)
+  }, [open])
+  function onMenuKeyDown(event) {
+    const items = [...menu.current.querySelectorAll('[role="menuitem"]')]
+    const index = items.indexOf(document.activeElement)
+    const focusItem = (next) =>
+      items[(next + items.length) % items.length]?.focus()
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setOpen(false)
+      button.current?.focus()
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      focusItem(index + 1)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      focusItem(index - 1)
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      focusItem(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      focusItem(items.length - 1)
+    } else if (event.key === 'Tab') {
+      setOpen(false)
+    }
+  }
+  return (
+    <div className="message-actions">
+      <button
+        ref={button}
+        id={buttonId}
+        type="button"
+        className="message-actions-button"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault()
+            setOpen(true)
+          }
+        }}
+      >
+        <span aria-hidden="true">⋯</span>
+      </button>
+      {open && (
+        <div
+          ref={menu}
+          id={menuId}
+          role="menu"
+          aria-labelledby={buttonId}
+          className="message-menu"
+          onKeyDown={onMenuKeyDown}
+        >
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              onClick={() => {
+                setOpen(false)
+                action.onSelect()
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function mergeMessages(previous, incoming) {
   return [
@@ -501,38 +617,58 @@ export function Conversation({ requestId, user }) {
             {messages.length === 0 ? (
               <p className="empty-state">You're connected. Say hello!</p>
             ) : (
-              messages.map((item) => (
-                <article
-                  className={
-                    item.sender_id === user.id
-                      ? 'chat-bubble own'
-                      : 'chat-bubble'
-                  }
-                  key={item.id}
-                >
-                  <strong>
-                    {item.sender_id === user.id ? 'You' : peerName}
-                  </strong>
-                  <p>{item.body}</p>
-                  {item.sender_id !== user.id && (
-                    <button
-                      type="button"
-                      onClick={() => setReportedMessage(item)}
-                    >
-                      Report message
-                    </button>
-                  )}
-                  <time dateTime={item.created_at}>
-                    {new Date(item.created_at).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </time>
-                  {item.id === lastOwnId && lastOwnId <= peerRead && (
-                    <span className="chat-seen">Seen</span>
-                  )}
-                </article>
-              ))
+              messages.map((item, index) => {
+                const own = item.sender_id === user.id
+                const position = runPosition(
+                  messages[index - 1],
+                  item,
+                  messages[index + 1],
+                )
+                const endsRun = position === 'last' || position === 'single'
+                const sent = new Date(item.created_at)
+                return (
+                  <article
+                    className={`chat-row ${own ? 'own' : 'peer'} ${position}`}
+                    key={item.id}
+                  >
+                    <div className="chat-bubble">
+                      {/* Names are implied by side in a two-person chat;
+                          screen readers still hear who sent each message. */}
+                      <span className="visually-hidden">
+                        {own ? 'You sent' : `${peerName} sent`}
+                      </span>
+                      <p>{item.body}</p>
+                    </div>
+                    {!own && (
+                      <MessageActions
+                        label={`More actions for message from ${peerName}`}
+                        actions={[
+                          {
+                            label: 'Report message',
+                            onSelect: () => setReportedMessage(item),
+                          },
+                        ]}
+                      />
+                    )}
+                    {endsRun && (
+                      <p className="chat-meta">
+                        <time
+                          dateTime={item.created_at}
+                          title={sent.toLocaleString()}
+                        >
+                          {sent.toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </time>
+                        {item.id === lastOwnId && lastOwnId <= peerRead && (
+                          <span className="chat-seen">Seen</span>
+                        )}
+                      </p>
+                    )}
+                  </article>
+                )
+              })
             )}
           </div>
           <p className="typing-indicator" aria-live="polite">
@@ -560,6 +696,19 @@ export function Conversation({ requestId, user }) {
                     setBody(e.target.value)
                     signalTyping(e.target.value)
                   }}
+                  onKeyDown={(e) => {
+                    // Enter sends and Shift+Enter adds a line. Enter that
+                    // confirms an input-method composition (e.g. Japanese
+                    // or Chinese input) must not send a half-typed message.
+                    if (
+                      e.key === 'Enter' &&
+                      !e.shiftKey &&
+                      !e.nativeEvent.isComposing
+                    ) {
+                      e.preventDefault()
+                      e.currentTarget.form.requestSubmit()
+                    }
+                  }}
                   maxLength={2000}
                   rows={3}
                   placeholder="Write a message..."
@@ -567,7 +716,10 @@ export function Conversation({ requestId, user }) {
                   required
                 />
                 <div>
-                  <span>{body.length}/2000 · Updates automatically</span>
+                  <span>
+                    {body.length}/2000 · Enter to send, Shift+Enter for a new
+                    line
+                  </span>
                   <button type="submit" disabled={sending || !body.trim()}>
                     {sending ? 'Sending...' : 'Send message'}
                   </button>

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConnectionRequestForm, RequestInbox, Conversation } from './Messaging'
@@ -620,5 +620,156 @@ describe('typing indicator', () => {
       },
     })
     expect(indicator()).toHaveTextContent('')
+  })
+})
+
+describe('message layout and actions', () => {
+  const at = (minutes) =>
+    new Date(Date.UTC(2026, 0, 1, 12, minutes)).toISOString()
+  const row = (id, body, sender_id, minutes) => ({
+    id,
+    sender_id,
+    body,
+    created_at: at(minutes),
+  })
+  async function open(messages) {
+    fetch.mockResolvedValue(
+      response({
+        request: { ...request, status: 'accepted' },
+        messages,
+        has_more: false,
+        peer_last_read_id: 0,
+      }),
+    )
+    render(<Conversation requestId={7} user={student} />)
+    await screen.findByText(messages[0].body)
+  }
+  const article = (text) => screen.getByText(text).closest('article')
+
+  it('groups runs by sender and time, showing the time once per run', async () => {
+    await open([
+      row(1, 'First of mine', student.id, 0),
+      row(2, 'Second of mine', student.id, 1),
+      row(3, 'Third of mine', student.id, 2),
+      row(4, 'Reply', 2, 3),
+      row(5, 'Much later', 2, 30),
+    ])
+    expect(article('First of mine')).toHaveClass('own', 'first')
+    expect(article('Second of mine')).toHaveClass('own', 'middle')
+    expect(article('Third of mine')).toHaveClass('own', 'last')
+    expect(article('Reply')).toHaveClass('peer', 'single')
+    expect(article('Much later')).toHaveClass('peer', 'single') // 27 min gap
+    expect(screen.getByRole('log').querySelectorAll('time')).toHaveLength(3)
+    expect(article('Third of mine').querySelector('time')).not.toBeNull()
+    expect(article('First of mine').querySelector('time')).toBeNull()
+  })
+
+  it('drops visible names but keeps who-sent labels for screen readers', async () => {
+    await open([row(1, 'Hi', student.id, 0), row(2, 'Hello', 2, 1)])
+    expect(article('Hi')).toHaveTextContent('You sent')
+    expect(article('Hello')).toHaveTextContent('Sam Lee sent')
+    expect(article('Hi').querySelector('.visually-hidden')).toHaveTextContent(
+      'You sent',
+    )
+    expect(screen.queryByRole('button', { name: 'Report message' })).toBeNull()
+  })
+
+  it('offers report through an accessible menu on the peer’s messages only', async () => {
+    const user = userEvent.setup()
+    await open([row(1, 'Mine', student.id, 0), row(2, 'Theirs', 2, 1)])
+    const buttons = screen.getAllByRole('button', { name: /More actions/ })
+    expect(buttons).toHaveLength(1) // none on my own messages
+    const more = buttons[0]
+    expect(more).toHaveAccessibleName('More actions for message from Sam Lee')
+    expect(more).toHaveAttribute('aria-haspopup', 'menu')
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(more)
+    const menu = screen.getByRole('menu')
+    expect(menu).toHaveAccessibleName('More actions for message from Sam Lee')
+    expect(more).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      screen.getByRole('menuitem', { name: 'Report message' }),
+    ).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(more).toHaveFocus()
+
+    await user.keyboard('{Enter}')
+    expect(
+      screen.getByRole('menuitem', { name: 'Report message' }),
+    ).toHaveFocus()
+    await user.tab()
+    expect(screen.queryByRole('menu')).toBeNull()
+
+    more.focus()
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    await user.click(document.body)
+    expect(screen.queryByRole('menu')).toBeNull()
+
+    await user.click(more)
+    await user.click(screen.getByRole('menuitem', { name: 'Report message' }))
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(
+      screen.getByRole('heading', { name: 'Report this message' }),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('composer keyboard', () => {
+  async function openChat() {
+    fetch.mockResolvedValueOnce(
+      response({
+        request: { ...request, status: 'accepted' },
+        messages: [],
+        has_more: false,
+        peer_last_read_id: 0,
+      }),
+    )
+    render(<Conversation requestId={7} user={student} />)
+    return screen.findByRole('textbox', { name: 'Message to Sam Lee' })
+  }
+  const posts = () =>
+    fetch.mock.calls.filter(([, options]) => options?.method === 'POST')
+
+  it('sends on Enter and adds a new line on Shift+Enter', async () => {
+    const user = userEvent.setup()
+    const box = await openChat()
+    fetch.mockResolvedValueOnce(
+      response(
+        {
+          message: {
+            id: 3,
+            sender_id: student.id,
+            body: 'Line one\nLine two',
+            created_at: request.created_at,
+          },
+        },
+        201,
+      ),
+    )
+    await user.type(box, 'Line one{Shift>}{Enter}{/Shift}Line two')
+    expect(box).toHaveValue('Line one\nLine two')
+    expect(posts()).toHaveLength(0)
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(box).toHaveValue(''))
+    expect(posts()).toHaveLength(1)
+    expect(JSON.parse(posts()[0][1].body)).toEqual({
+      body: 'Line one\nLine two',
+    })
+  })
+
+  it('does not send empty messages or while an input method is composing', async () => {
+    const user = userEvent.setup()
+    const box = await openChat()
+    await user.click(box)
+    await user.keyboard('{Enter}')
+    expect(posts()).toHaveLength(0)
+    await user.type(box, 'かな')
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true })
+    expect(posts()).toHaveLength(0)
+    expect(box).toHaveValue('かな')
   })
 })
