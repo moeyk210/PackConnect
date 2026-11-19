@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import CourseAutocomplete from './CourseAutocomplete'
 
 export default function RegistrationForm({ apiUrl, onRegistered, onClose }) {
   const [values, setValues] = useState({
@@ -227,18 +228,18 @@ export default function RegistrationForm({ apiUrl, onRegistered, onClose }) {
             <label htmlFor="register-courses">
               Completed courses (optional)
             </label>
-            <input
-              id="register-courses"
-              name="courses"
+            <CourseAutocomplete
+              inputId="register-courses"
+              label="Completed courses"
+              multiple
               value={values.courses}
-              onChange={update}
+              onChange={(courses) =>
+                setValues((previous) => ({ ...previous, courses }))
+              }
               maxLength={1600}
               placeholder="CSC 510, CSC 540"
-              aria-describedby="courses-help"
+              hint="Separate course codes with commas. Up to 50 courses. Suggestions come from the course catalog."
             />
-            <span id="courses-help" className="message-count">
-              Separate course codes with commas. Up to 50 courses.
-            </span>
             <label className="checkbox-label">
               <input
                 type="checkbox"

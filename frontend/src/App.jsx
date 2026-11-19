@@ -630,30 +630,37 @@ function App({ user, onLogout, route, onUserUpdated }) {
                   />
                 </label>
 
-                <label>
-                  Completed courses
-                  <input
+                <div className="course-field">
+                  <label htmlFor="profile-completed-courses">
+                    Completed courses
+                  </label>
+                  <CourseAutocomplete
+                    inputId="profile-completed-courses"
+                    label="Completed courses"
+                    multiple
                     value={profileForm.completed_courses}
-                    onChange={(event) =>
-                      updateProfileField(
-                        'completed_courses',
-                        event.target.value,
-                      )
+                    onChange={(value) =>
+                      updateProfileField('completed_courses', value)
                     }
                     placeholder="CSC 510, CSC 540"
                   />
-                </label>
+                </div>
 
-                <label>
-                  Current courses
-                  <input
+                <div className="course-field">
+                  <label htmlFor="profile-current-courses">
+                    Current courses
+                  </label>
+                  <CourseAutocomplete
+                    inputId="profile-current-courses"
+                    label="Current courses"
+                    multiple
                     value={profileForm.current_courses}
-                    onChange={(event) =>
-                      updateProfileField('current_courses', event.target.value)
+                    onChange={(value) =>
+                      updateProfileField('current_courses', value)
                     }
                     placeholder="CSC 515, CSC 522"
                   />
-                </label>
+                </div>
 
                 <label>
                   Interests

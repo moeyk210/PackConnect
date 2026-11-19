@@ -5,6 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { deferred, request, response, student } from './test/fixtures'
 
+const catalog = [
+  { code: 'CSC 510', title: 'Software Engineering' },
+  { code: 'CSC 540', title: 'Database Management Concepts and Systems' },
+]
+
 // Keep App mounted as the real hash router does, including Cancel/Save navigation.
 function Workspace({ initialRoute = 'app', onUserUpdated = () => {} }) {
   const [route, setRoute] = useState(initialRoute)
@@ -25,8 +30,7 @@ function Workspace({ initialRoute = 'app', onUserUpdated = () => {} }) {
 
 beforeEach(() => {
   fetch.mockImplementation(async (url, options = {}) => {
-    if (url.startsWith('/api/courses?'))
-      return response({ courses: ['CSC 510', 'CSC 540'] })
+    if (url.startsWith('/api/courses?')) return response({ courses: catalog })
     if (url.startsWith('/api/students/search?')) return response([student])
     if (url === '/api/students/1' && !options.method)
       return response({ student })
@@ -63,7 +67,7 @@ describe('peer search', () => {
     const input = screen.getByRole('combobox', { name: 'Course code' })
     await user.clear(input)
     await user.type(input, 'csc5')
-    await screen.findByRole('option', { name: 'CSC 540' })
+    await screen.findByRole('option', { name: /^CSC 540/ })
     const searches = () =>
       fetch.mock.calls.filter(([url]) =>
         url.startsWith('/api/students/search?'),
@@ -234,9 +238,11 @@ describe('profile editor', () => {
     expect(bio).toHaveValue(student.bio)
     await user.clear(bio)
     await user.type(bio, 'Updated bio')
-    await user.clear(screen.getByRole('textbox', { name: 'Completed courses' }))
+    await user.clear(
+      screen.getByRole('combobox', { name: 'Completed courses' }),
+    )
     await user.type(
-      screen.getByRole('textbox', { name: 'Completed courses' }),
+      screen.getByRole('combobox', { name: 'Completed courses' }),
       'CSC 510, CSC 540, ',
     )
     await user.dblClick(screen.getByRole('button', { name: 'Save Profile' }))
@@ -257,6 +263,39 @@ describe('profile editor', () => {
         screen.queryByRole('button', { name: 'Save Profile' }),
       ).not.toBeInTheDocument(),
     )
+  })
+
+  it('fills course lists from catalog suggestions and saves the chosen codes', async () => {
+    const user = userEvent.setup()
+    const normalFetch = fetch.getMockImplementation()
+    fetch.mockImplementation((url, options) =>
+      options?.method === 'PUT'
+        ? Promise.resolve(
+            response({ student: { ...student, ...JSON.parse(options.body) } }),
+          )
+        : normalFetch(url, options),
+    )
+    render(<Workspace initialRoute="app/profile/edit" />)
+    const completed = await screen.findByRole('combobox', {
+      name: 'Completed courses',
+    })
+    await user.clear(completed)
+    await user.type(completed, 'csc5')
+    await user.click(
+      await screen.findByRole('option', { name: /^CSC 540 Database/ }),
+    )
+    expect(completed).toHaveValue('CSC 540, ')
+    const current = screen.getByRole('combobox', { name: 'Current courses' })
+    await user.type(current, 'soft')
+    await user.click(
+      await screen.findByRole('option', { name: /^CSC 510 Software/ }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Save Profile' }))
+    expect(JSON.parse(writes()[0][1].body)).toMatchObject({
+      completed_courses: ['CSC 540'],
+      current_courses: ['CSC 510'],
+    })
+    expect(await screen.findByText('Profile updated.')).toBeInTheDocument()
   })
 
   it('discards cancelled edits and restores saved values when reopened', async () => {

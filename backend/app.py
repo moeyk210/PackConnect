@@ -347,19 +347,30 @@ def course_key(value):
 
 @app.route("/api/courses")
 def suggest_courses():
-    query = course_key(request.args.get("q", ""))
-    if not query or len(query) > 30:
+    """Catalog autocomplete: up to 10 courses whose code starts with, or whose
+    title contains, the query. Spaces, hyphens and case are ignored in codes."""
+    text = re.sub(r"\s+", " ", request.args.get("q", "")).strip()
+    key = course_key(text)
+    if not key or len(text) > 100:
         return jsonify({"courses": []})
     with get_db() as db:
-        rows = db.execute(f"""
-            SELECT DISTINCT regexp_replace(UPPER(c.course_code), '[[:space:]-]+', '', 'g') AS code
-            FROM completed_courses c
-            JOIN students s ON s.id = c.student_id
-            WHERE {registered_student_sql()}
-              AND starts_with(regexp_replace(UPPER(c.course_code), '[[:space:]-]+', '', 'g'), %s)
-            ORDER BY code LIMIT 10
-        """, (query,)).fetchall()
-    return jsonify({"courses": [re.sub(r"^([A-Z]+)(\d)", r"\1 \2", row["code"]) for row in rows]})
+        rows = db.execute("""
+            SELECT c.code, c.title
+            FROM (SELECT code, title,
+                        regexp_replace(upper(code), '[[:space:]-]+', '', 'g') AS code_key,
+                        regexp_replace(upper(code), '^[[:alpha:]]+[[:space:]-]*', '') AS number_key
+                    FROM courses) AS c
+            WHERE starts_with(c.code_key, %s)
+                OR starts_with(c.number_key, %s)
+                OR position(lower(%s) in lower(c.title)) > 0
+            ORDER BY (c.code_key = %s) DESC,
+                    starts_with(c.code_key, %s) DESC,
+                    starts_with(c.number_key, %s) DESC,
+                    starts_with(lower(c.title), lower(%s)) DESC,
+                    c.code
+            LIMIT 10
+        """, (key, key, text, key, key, key, text)).fetchall()
+    return jsonify({"courses": [{"code": row["code"], "title": row["title"]} for row in rows]})
 
 
 @app.route("/api/students/search")
