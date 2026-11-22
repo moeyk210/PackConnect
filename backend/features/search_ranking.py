@@ -13,11 +13,17 @@ Inside each group, advisors are ordered by their ranking score.
 This module does no database work; the search route passes in plain rows.
 """
 
+import re
 from dataclasses import dataclass, field
 
 # Filters that check a profile's text. A filter counts as met when the profile
 # field contains the wanted text, ignoring capital letters.
 TEXT_FILTERS = ("program", "year", "skills", "advice_topics")
+
+# Result groups, in the order they are shown. Lower numbers come first.
+YOUR_MATCHES = 0
+OUTSIDE_CLOSE = 1          # Took the searched course (or no course was searched) but missed filters.
+OUTSIDE_OTHER_COURSE = 2   # Took a different course in the same subject.
 
 
 @dataclass(frozen=True)
@@ -38,3 +44,28 @@ def missed_filters(row, filters):
         name for name in TEXT_FILTERS
         if name in filters.text and filters.text[name].lower() not in (row.get(name) or "").lower()
     ]
+
+
+def course_subject(course_key):
+    """Return the subject letters of a course key ("CSC510" -> "CSC"), or "" if there are none."""
+    match = re.match(r"[A-Z]+", course_key or "")
+    return match.group() if match else ""
+
+
+def result_group(row, filters, missed):
+    """Return which group the advisor belongs in, or None to leave them out of the results.
+
+    Someone outside the searched subject is never shown. An advisor from a
+    different course in the subject, or a near miss when no course was searched,
+    must still meet at least one of the filters (if any were given).
+    """
+    meets_some_filters = not filters.text or len(missed) < len(filters.text)
+    if not filters.course_key:
+        if not missed:
+            return YOUR_MATCHES
+        return OUTSIDE_CLOSE if meets_some_filters else None
+    if filters.course_key in row["course_keys"]:
+        return OUTSIDE_CLOSE if missed else YOUR_MATCHES
+    subject = course_subject(filters.course_key)
+    same_subject = subject and any(course_subject(key) == subject for key in row["course_keys"])
+    return OUTSIDE_OTHER_COURSE if same_subject and meets_some_filters else None
