@@ -18,6 +18,7 @@ from features.typing import register_typing
 from features.feedback import create_feedback_blueprint
 from features.reputation import create_reputation_blueprint, reputation_columns, reputation_join, with_reputation
 from features.advisor_candidates import NOT_BLOCKED_SQL, course_key_sql, fetch_advisor_rows
+from features.recommendations import create_recommendations_blueprint
 from features.search_ranking import (TEXT_FILTERS, SearchFilters, course_subject, page_settings,
                                      rank_search_results, results_page)
 from features.lifecycle import lock_students
@@ -81,6 +82,7 @@ app.register_blueprint(create_meetings_blueprint(get_db))
 app.register_blueprint(create_recovery_blueprint(get_db))
 app.register_blueprint(create_feedback_blueprint(get_db))
 app.register_blueprint(create_reputation_blueprint(get_db))
+app.register_blueprint(create_recommendations_blueprint(get_db))
 register_realtime(app, get_db)
 register_typing(get_db)
 
