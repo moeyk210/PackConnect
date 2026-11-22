@@ -8,6 +8,7 @@ import {
   useRealtimeEmit,
   useRealtimeEvent,
 } from './realtime'
+import { ConversationFeedback } from './FeedbackPanel'
 
 export function ConnectionRequestForm({
   student,
@@ -674,6 +675,12 @@ export function Conversation({ requestId, user }) {
           <p className="typing-indicator" aria-live="polite">
             {peerTyping && peerName ? `${peerName} is typing…` : ''}
           </p>
+          <ConversationFeedback
+            requestId={requestId}
+            record={record}
+            messages={messages}
+            peerName={peerName}
+          />
           {['completed', 'closed'].includes(record.status) ||
           record.contact_allowed === false ? (
             <p role="status">

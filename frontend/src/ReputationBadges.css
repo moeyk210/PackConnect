@@ -1,0 +1,22 @@
+/* Reputation pills: same shape as .available-badge; colors from .avatar and
+   the neutral .status-badge.completed. */
+.reputation-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.reputation-badge {
+  padding: 6px 10px;
+  border-radius: 20px;
+  background: #f3f4f6;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 700;
+}
+.reputation-badge.rated {
+  background: #fee2e2;
+  color: #b91c1c;
+}
