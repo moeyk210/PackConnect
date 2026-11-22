@@ -70,5 +70,43 @@ class TopicMatchTests(unittest.TestCase):
         self.assertEqual(ranking.topic_match("interviews", None), 0.0)
 
 
+def scaled_rating(rating):
+    """Convert a 1-10 rating to the 0-1 scale the factors use."""
+    return (rating - 1) / 9
+
+
+class RatingScoreTests(unittest.TestCase):
+    # These expected values assume a starting value of 7.0 worth 3 ratings.
+    def setUp(self):
+        self.assertEqual((ranking.RATING_STARTING_VALUE, ranking.RATING_STARTING_WEIGHT), (7.0, 3))
+
+    def test_no_ratings_gets_the_starting_value_not_zero(self):
+        self.assertAlmostEqual(ranking.rating_score(None, 0), scaled_rating(7.0))
+        self.assertAlmostEqual(ranking.rating_score(None, None), scaled_rating(7.0))
+
+    def test_known_average_is_blended_with_the_starting_value(self):
+        # (7.0 * 3 + 8.75 * 20) / 23 = 8.52
+        self.assertAlmostEqual(ranking.rating_score(8.75, 20), scaled_rating(196 / 23))
+
+    def test_many_strong_ratings_beat_one_perfect_rating(self):
+        self.assertGreater(ranking.rating_score(9.0, 20), ranking.rating_score(10.0, 1))
+
+    def test_a_single_low_rating_still_lowers_the_score(self):
+        # (7.0 * 3 + 1) / 4 = 5.5, below an advisor with no ratings.
+        self.assertAlmostEqual(ranking.rating_score(1.0, 1), scaled_rating(5.5))
+        self.assertLess(ranking.rating_score(1.0, 1), ranking.rating_score(None, 0))
+
+    def test_many_low_ratings_rank_below_a_single_low_rating(self):
+        self.assertLess(ranking.rating_score(3.0, 10), ranking.rating_score(1.0, 1))
+
+    def test_higher_average_wins_when_counts_are_equal(self):
+        self.assertGreater(ranking.rating_score(9.0, 5), ranking.rating_score(8.0, 5))
+
+    def test_score_stays_between_zero_and_one(self):
+        for average, count in ((1.0, 1000), (10.0, 1000)):
+            with self.subTest(average=average):
+                self.assertTrue(0 <= ranking.rating_score(average, count) <= 1)
+
+
 if __name__ == "__main__":
     unittest.main()

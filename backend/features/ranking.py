@@ -90,3 +90,25 @@ def topic_match(asked_topic, advisor_topics):
     if not asked:
         return None
     return len(asked & _meaningful_words(advisor_topics)) / len(asked)
+
+
+def _blend_with_starting_value(observed_total, observed_count, starting_value, starting_weight):
+    """Average real results together with a few imaginary typical ones (a Bayesian average).
+
+    With no real results this returns the starting value. As real results pile
+    up, they outweigh the starting value and the average moves toward them.
+    """
+    return (starting_value * starting_weight + observed_total) / (starting_weight + observed_count)
+
+
+def rating_score(average_rating, rating_count):
+    """Return the advisor's rating as a number from 0 to 1, adjusted for how many ratings they have.
+
+    Every rating counts, including low ones: they pull the score down as they
+    should. But one rating is weak evidence, so a single 10 does not beat twenty 9s.
+    An advisor with no ratings gets the starting value instead of zero.
+    """
+    count = rating_count or 0
+    total = (average_rating or 0) * count
+    blended = _blend_with_starting_value(total, count, RATING_STARTING_VALUE, RATING_STARTING_WEIGHT)
+    return (blended - LOWEST_RATING) / (HIGHEST_RATING - LOWEST_RATING)
