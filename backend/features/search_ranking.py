@@ -16,6 +16,8 @@ This module does no database work; the search route passes in plain rows.
 import re
 from dataclasses import dataclass, field
 
+from features import ranking
+
 # Filters that check a profile's text. A filter counts as met when the profile
 # field contains the wanted text, ignoring capital letters.
 TEXT_FILTERS = ("program", "year", "skills", "advice_topics")
@@ -69,3 +71,31 @@ def result_group(row, filters, missed):
     subject = course_subject(filters.course_key)
     same_subject = subject and any(course_subject(key) == subject for key in row["course_keys"])
     return OUTSIDE_OTHER_COURSE if same_subject and meets_some_filters else None
+
+
+def rating_label(reputation):
+    """Describe an advisor's reviews, for example "9.0/10 (20 reviews)" or "No reviews yet"."""
+    count = reputation["rating_count"] or 0
+    if count == 0:
+        return "No reviews yet"
+    return f"{reputation['average_rating']:.1f}/10 ({count} review{'' if count == 1 else 's'})"
+
+
+def match_reasons(row, filters, group):
+    """Short labels explaining an advisor's place in the results, built from the same data as the score.
+
+    The searched course is not repeated for advisors who took it, since every
+    such result shares it. Advisors from a different course say which one.
+    """
+    reasons = []
+    if group == OUTSIDE_OTHER_COURSE:
+        subject = course_subject(filters.course_key)
+        taken = [code for code, key in zip(row["courses"], row["course_keys"]) if course_subject(key) == subject]
+        reasons.append("Took " + ", ".join(dict.fromkeys(taken)))
+    topic_words = ranking.matching_topic_words(filters.text.get("advice_topics"), row.get("advice_topics"))
+    if topic_words:
+        reasons.append("Advises on " + " ".join(topic_words))
+    reasons.append(rating_label(row["reputation"]))
+    if row["response_answered"] + row["response_unanswered"] > 0:
+        reasons.append(f"Answers {row['reputation']['response_rate']}% of requests")
+    return reasons

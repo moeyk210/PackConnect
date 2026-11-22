@@ -82,5 +82,47 @@ class ResultGroupTests(unittest.TestCase):
         self.assertIsNone(self.group(row(), none))
 
 
+def rated(average, count, answered=0, unanswered=0, response_rate=None):
+    """Reputation fields for a row, in the shape the search route provides."""
+    return {
+        "reputation": {"average_rating": average, "rating_count": count, "helpful_percent": None,
+                       "students_helped": 0, "response_rate": response_rate},
+        "response_answered": answered, "response_unanswered": unanswered,
+    }
+
+
+class MatchReasonsTests(unittest.TestCase):
+    def reasons(self, advisor, filters, group=search_ranking.YOUR_MATCHES):
+        return search_ranking.match_reasons(advisor, filters, group)
+
+    def test_new_advisor_shows_topic_and_no_reviews(self):
+        advisor = row(advice_topics="Interview prep, resumes")
+        filters = SearchFilters(course_key="CSC510", text={"advice_topics": "interview prep"})
+        self.assertEqual(self.reasons(advisor, filters), ["Advises on interview prep", "No reviews yet"])
+
+    def test_reviewed_advisor_shows_rating_and_response_rate(self):
+        advisor = row(advice_topics="Interviews, projects", **rated(9.0, 20, answered=19, unanswered=1, response_rate=95))
+        filters = SearchFilters(course_key="CSC510", text={"advice_topics": "interview prep"})
+        self.assertEqual(self.reasons(advisor, filters),
+                         ["Advises on interview", "9.0/10 (20 reviews)", "Answers 95% of requests"])
+
+    def test_single_review_is_singular(self):
+        self.assertEqual(self.reasons(row(**rated(7.0, 1)), SearchFilters()), ["7.0/10 (1 review)"])
+
+    def test_no_topic_label_without_a_topic_match(self):
+        advisor = row(advice_topics="Course workload", **rated(6.0, 5, answered=2, unanswered=2, response_rate=50))
+        filters = SearchFilters(course_key="CSC510", text={"advice_topics": "interview prep"})
+        self.assertEqual(self.reasons(advisor, filters), ["6.0/10 (5 reviews)", "Answers 50% of requests"])
+
+    def test_other_course_advisor_says_which_course_they_took(self):
+        advisor = row(course_keys=["CSC316", "CSC540", "MA305"], courses=["CSC 316", "CSC 540", "MA 305"])
+        reasons = self.reasons(advisor, SearchFilters(course_key="CSC510"), search_ranking.OUTSIDE_OTHER_COURSE)
+        self.assertEqual(reasons, ["Took CSC 316, CSC 540", "No reviews yet"])
+
+    def test_searched_course_is_not_repeated_for_advisors_who_took_it(self):
+        reasons = self.reasons(row(), SearchFilters(course_key="CSC510"))
+        self.assertFalse(any("CSC 510" in reason for reason in reasons))
+
+
 if __name__ == "__main__":
     unittest.main()
