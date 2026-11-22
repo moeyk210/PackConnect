@@ -85,6 +85,17 @@ def rating_label(reputation):
     return f"{reputation['average_rating']:.1f}/10 ({count} review{'' if count == 1 else 's'})"
 
 
+def reputation_reasons(row):
+    """The review label, plus the response rate once the advisor has had at least one request.
+
+    A brand-new advisor shows no response rate rather than a made-up number.
+    """
+    reasons = [rating_label(row["reputation"])]
+    if row["response_answered"] + row["response_unanswered"] > 0:
+        reasons.append(f"Answers {row['reputation']['response_rate']}% of requests")
+    return reasons
+
+
 def match_reasons(row, filters, group):
     """Short labels explaining an advisor's place in the results, built from the same data as the score.
 
@@ -99,10 +110,7 @@ def match_reasons(row, filters, group):
     topic_words = ranking.matching_topic_words(filters.text.get("advice_topics"), row.get("advice_topics"))
     if topic_words:
         reasons.append("Advises on " + " ".join(topic_words))
-    reasons.append(rating_label(row["reputation"]))
-    if row["response_answered"] + row["response_unanswered"] > 0:
-        reasons.append(f"Answers {row['reputation']['response_rate']}% of requests")
-    return reasons
+    return reasons + reputation_reasons(row)
 
 
 # Columns the route selects only so results can be ranked. They are removed
