@@ -15,6 +15,7 @@ plain values, which keeps every rule here easy to test and easy to tune.
 """
 
 import re
+from dataclasses import dataclass, field
 
 # How much each factor counts toward the final score. These are the only
 # weights in the app: change them here and every ranked list follows.
@@ -125,3 +126,57 @@ def response_score(answered_requests, unanswered_requests):
     answered = answered_requests or 0
     total = answered + (unanswered_requests or 0)
     return _blend_with_starting_value(answered, total, RESPONSE_STARTING_RATE, RESPONSE_STARTING_WEIGHT)
+
+
+@dataclass(frozen=True)
+class SearchRequest:
+    """What the student is looking for."""
+
+    courses: list = field(default_factory=list)
+    topic: str = ""
+
+
+@dataclass(frozen=True)
+class AdvisorFacts:
+    """What we know about one advisor, gathered by the caller."""
+
+    id: int
+    name: str
+    completed_courses: list = field(default_factory=list)
+    advice_topics: str = ""
+    average_rating: float | None = None
+    rating_count: int = 0
+    answered_requests: int = 0
+    unanswered_requests: int = 0
+
+
+@dataclass(frozen=True)
+class AdvisorScore:
+    """An advisor's final score plus the per-factor numbers that produced it.
+
+    The per-factor numbers are kept so the app can explain each ranking
+    (for example "Completed CSC 510") from the same values used to score it.
+    A factor set to None did not apply to this search and was left out.
+    """
+
+    advisor: AdvisorFacts
+    score: float
+    factors: dict
+
+
+def score_advisor(search, advisor, weights=RANKING_WEIGHTS):
+    """Combine the four factors into one score from 0 to 1 using a weighted average.
+
+    Course and topic only count when the student asked about them. Rating and
+    response always count, because they fall back to starting values.
+    """
+    factors = {
+        "course": course_match(search.courses, advisor.completed_courses),
+        "topic": topic_match(search.topic, advisor.advice_topics),
+        "rating": rating_score(advisor.average_rating, advisor.rating_count),
+        "response": response_score(advisor.answered_requests, advisor.unanswered_requests),
+    }
+    applicable = {name: value for name, value in factors.items() if value is not None}
+    total_weight = sum(weights[name] for name in applicable)
+    score = sum(weights[name] * value for name, value in applicable.items()) / total_weight
+    return AdvisorScore(advisor=advisor, score=score, factors=factors)

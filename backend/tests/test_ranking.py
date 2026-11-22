@@ -129,5 +129,68 @@ class ResponseScoreTests(unittest.TestCase):
         self.assertLess(ranking.response_score(2, 8), ranking.response_score(8, 2))
 
 
+def advisor(advisor_id=1, name="Ada", **facts):
+    return ranking.AdvisorFacts(id=advisor_id, name=name, **facts)
+
+
+def only(factor):
+    """Weights that count a single factor, so its effect can be tested alone."""
+    return {name: (1 if name == factor else 0.0001) for name in ranking.RANKING_WEIGHTS}
+
+
+class ScoreAdvisorTests(unittest.TestCase):
+    def setUp(self):
+        self.search = ranking.SearchRequest(courses=["CSC 510"], topic="interviews")
+
+    def test_breakdown_contains_every_factor(self):
+        result = ranking.score_advisor(self.search, advisor(completed_courses=["CSC 510"]))
+        self.assertEqual(set(result.factors), {"course", "topic", "rating", "response"})
+        self.assertEqual(result.factors["course"], 1.0)
+        self.assertEqual(result.factors["topic"], 0.0)
+
+    def test_score_is_the_weighted_average_of_the_factors(self):
+        result = ranking.score_advisor(self.search, advisor(completed_courses=["CSC 510"], advice_topics="Interviews"))
+        weights = ranking.RANKING_WEIGHTS
+        expected = sum(weights[name] * value for name, value in result.factors.items()) / sum(weights.values())
+        self.assertAlmostEqual(result.score, expected)
+
+    def test_each_factor_changes_the_score_on_its_own(self):
+        cases = {
+            "course": ({"completed_courses": ["CSC 510"]}, {"completed_courses": ["CSC 540"]}),
+            "topic": ({"advice_topics": "interviews"}, {"advice_topics": "workload"}),
+            "rating": ({"average_rating": 9.5, "rating_count": 10}, {"average_rating": 4.0, "rating_count": 10}),
+            "response": ({"answered_requests": 10}, {"unanswered_requests": 10}),
+        }
+        for factor, (better, worse) in cases.items():
+            with self.subTest(factor=factor):
+                weights = only(factor)
+                self.assertGreater(
+                    ranking.score_advisor(self.search, advisor(**better), weights).score,
+                    ranking.score_advisor(self.search, advisor(**worse), weights).score,
+                )
+
+    def test_factors_the_student_did_not_ask_about_are_left_out(self):
+        result = ranking.score_advisor(ranking.SearchRequest(), advisor())
+        self.assertIsNone(result.factors["course"])
+        self.assertIsNone(result.factors["topic"])
+        weights = ranking.RANKING_WEIGHTS
+        expected = (weights["rating"] * result.factors["rating"] + weights["response"] * result.factors["response"]) / (
+            weights["rating"] + weights["response"]
+        )
+        self.assertAlmostEqual(result.score, expected)
+
+    def test_advisor_with_no_history_is_not_scored_zero(self):
+        result = ranking.score_advisor(self.search, advisor(completed_courses=["CSC 510"], advice_topics="interviews"))
+        self.assertGreater(result.score, 0.8)
+
+    def test_score_stays_between_zero_and_one(self):
+        best = advisor(completed_courses=["CSC 510"], advice_topics="interviews",
+                       average_rating=10.0, rating_count=500, answered_requests=500)
+        worst = advisor(average_rating=1.0, rating_count=500, unanswered_requests=500)
+        for facts in (best, worst):
+            with self.subTest(advisor=facts):
+                self.assertTrue(0 <= ranking.score_advisor(self.search, facts).score <= 1)
+
+
 if __name__ == "__main__":
     unittest.main()
