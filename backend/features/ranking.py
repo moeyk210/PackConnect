@@ -14,6 +14,8 @@ Nothing in this module reads the database or the web request. Callers pass in
 plain values, which keeps every rule here easy to test and easy to tune.
 """
 
+import re
+
 # How much each factor counts toward the final score. These are the only
 # weights in the app: change them here and every ranked list follows.
 # They do not need to add up to 1, because the final score divides by their total.
@@ -53,3 +55,38 @@ def course_match(wanted_courses, completed_courses):
     if not wanted:
         return None
     return len(wanted & set(completed_courses)) / len(wanted)
+
+
+# Common words that carry no meaning on their own, so they never count as a match.
+IGNORED_WORDS = {
+    "a", "an", "and", "the", "for", "of", "to", "in", "on", "with", "my", "about", "help", "advice",
+}
+
+
+def _base_word(word):
+    """Trim common plural endings so "interviews" matches "interview"."""
+    if len(word) > 4 and word.endswith("ies"):
+        return word[:-3] + "y"
+    if len(word) > 3 and word.endswith(("ches", "shes", "sses", "xes")):
+        return word[:-2]
+    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
+
+
+def _meaningful_words(text):
+    words = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return {_base_word(word) for word in words if word not in IGNORED_WORDS}
+
+
+def topic_match(asked_topic, advisor_topics):
+    """Return the share of the student's topic words that the advisor's topics cover.
+
+    Measuring coverage of the student's words (rather than overlap of both lists)
+    means an advisor is not penalized for listing many topics.
+    Returns None when the student did not ask about a topic.
+    """
+    asked = _meaningful_words(asked_topic)
+    if not asked:
+        return None
+    return len(asked & _meaningful_words(advisor_topics)) / len(asked)

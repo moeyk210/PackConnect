@@ -37,5 +37,38 @@ class CourseMatchTests(unittest.TestCase):
         self.assertEqual(ranking.course_match(["CSC 510"], []), 0.0)
 
 
+class TopicMatchTests(unittest.TestCase):
+    def test_exact_topic_is_a_full_match(self):
+        self.assertEqual(ranking.topic_match("interviews", "Projects, interviews"), 1.0)
+
+    def test_plural_and_singular_match(self):
+        self.assertEqual(ranking.topic_match("interview", "Projects, interviews"), 1.0)
+        self.assertEqual(ranking.topic_match("study strategies", "study strategy"), 1.0)
+
+    def test_case_and_punctuation_are_ignored(self):
+        self.assertEqual(ranking.topic_match("Course-Workload", "course workload"), 1.0)
+
+    def test_partial_match_counts_the_covered_share(self):
+        self.assertEqual(ranking.topic_match("interview prep", "Projects, interviews"), 0.5)
+
+    def test_listing_many_topics_is_not_penalized(self):
+        many = "Exams, research, interview prep, resumes, networking, grad school"
+        self.assertEqual(ranking.topic_match("interview prep", many), 1.0)
+
+    def test_filler_words_never_count_as_a_match(self):
+        self.assertEqual(ranking.topic_match("help with the exams", "help with the projects"), 0.0)
+
+    def test_unrelated_topics_are_no_match(self):
+        self.assertEqual(ranking.topic_match("interviews", "Course workload"), 0.0)
+
+    def test_no_asked_topic_leaves_the_factor_out(self):
+        for asked in ("", "   ", None, "the and of"):
+            with self.subTest(asked=asked):
+                self.assertIsNone(ranking.topic_match(asked, "Projects"))
+
+    def test_advisor_with_no_topics_is_no_match(self):
+        self.assertEqual(ranking.topic_match("interviews", None), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
