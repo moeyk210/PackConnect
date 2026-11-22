@@ -192,5 +192,46 @@ class ScoreAdvisorTests(unittest.TestCase):
                 self.assertTrue(0 <= ranking.score_advisor(self.search, facts).score <= 1)
 
 
+class RankAdvisorsTests(unittest.TestCase):
+    def setUp(self):
+        self.search = ranking.SearchRequest(courses=["CSC 510"], topic="interview prep")
+
+    def names(self, results):
+        return [result.advisor.name for result in results]
+
+    def test_best_fit_comes_first_not_alphabetical(self):
+        advisors = [
+            advisor(1, "Aaron", completed_courses=["CSC 510"], advice_topics="Workload",
+                    average_rating=6.0, rating_count=5, answered_requests=2, unanswered_requests=2),
+            advisor(2, "Maya", completed_courses=["CSC 510"], advice_topics="Interviews, projects",
+                    average_rating=9.0, rating_count=20, answered_requests=19, unanswered_requests=1),
+            advisor(3, "Zoe", completed_courses=["CSC 510"], advice_topics="Interview prep, resumes"),
+        ]
+        self.assertEqual(self.names(ranking.rank_advisors(self.search, advisors)), ["Zoe", "Maya", "Aaron"])
+
+    def test_near_matches_rank_below_full_matches(self):
+        advisors = [
+            advisor(1, "Partial", completed_courses=["CSC 510"], advice_topics="Interviews"),
+            advisor(2, "Full", completed_courses=["CSC 510"], advice_topics="Interview prep"),
+            advisor(3, "Neither", completed_courses=["CSC 540"], advice_topics="Workload"),
+        ]
+        self.assertEqual(self.names(ranking.rank_advisors(self.search, advisors)), ["Full", "Partial", "Neither"])
+
+    def test_ties_are_broken_by_name_then_id(self):
+        same = {"completed_courses": ["CSC 510"], "advice_topics": "Interview prep"}
+        advisors = [advisor(4, "blake", **same), advisor(3, "Ada", **same), advisor(2, "Blake", **same)]
+        results = ranking.rank_advisors(self.search, advisors)
+        self.assertEqual([(r.advisor.name, r.advisor.id) for r in results], [("Ada", 3), ("Blake", 2), ("blake", 4)])
+
+    def test_order_does_not_depend_on_input_order(self):
+        advisors = [advisor(i, name, completed_courses=["CSC 510"]) for i, name in enumerate("EDCBA")]
+        forward = self.names(ranking.rank_advisors(self.search, advisors))
+        backward = self.names(ranking.rank_advisors(self.search, list(reversed(advisors))))
+        self.assertEqual(forward, backward)
+
+    def test_no_advisors_gives_an_empty_list(self):
+        self.assertEqual(ranking.rank_advisors(self.search, []), [])
+
+
 if __name__ == "__main__":
     unittest.main()
