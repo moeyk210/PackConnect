@@ -124,5 +124,56 @@ class MatchReasonsTests(unittest.TestCase):
         self.assertFalse(any("CSC 510" in reason for reason in reasons))
 
 
+class RankSearchResultsTests(unittest.TestCase):
+    def setUp(self):
+        # Ana searches CSC 510 for interview prep in MS Computer Science.
+        self.filters = SearchFilters(course_key="CSC510",
+                                     text={"program": "MS Computer", "advice_topics": "interview prep"})
+        self.rows = [
+            row(id=1, name="Aaron", program="BS Computer Science", advice_topics="Course workload",
+                **rated(6.0, 5, answered=2, unanswered=2, response_rate=50)),
+            row(id=2, name="Maya", advice_topics="Interviews, projects",
+                **rated(9.0, 20, answered=19, unanswered=1, response_rate=95)),
+            row(id=3, name="Zoe", advice_topics="Interview prep, resumes"),
+            row(id=4, name="Sam", advice_topics="Interview prep", course_keys=["CSC540"], courses=["CSC 540"]),
+            row(id=5, name="Priya", advice_topics="Interview prep, exams",
+                **rated(8.5, 12, answered=9, unanswered=1, response_rate=90)),
+            row(id=6, name="Lee", course_keys=["MA305"], courses=["MA 305"], advice_topics="Interview prep"),
+        ]
+
+    def names(self, results):
+        return [result.public["name"] for result in results]
+
+    def test_matches_first_then_close_misses_then_other_courses(self):
+        results = search_ranking.rank_search_results(self.rows, self.filters)
+        # Zoe and Priya match everything. Maya misses the exact topic phrase; Aaron misses
+        # the topic and the program. Sam took CSC 540 instead of CSC 510.
+        self.assertEqual(self.names(results), ["Priya", "Zoe", "Maya", "Aaron", "Sam"])
+        self.assertEqual([r.group for r in results], [0, 0, 1, 1, 2])
+
+    def test_other_subjects_are_never_included(self):
+        results = search_ranking.rank_search_results(self.rows, self.filters)
+        self.assertNotIn("Lee", self.names(results))
+
+    def test_unchecking_no_reviews_leaves_out_unrated_advisors(self):
+        filters = SearchFilters(course_key="CSC510", text=self.filters.text, include_unrated=False)
+        self.assertEqual(self.names(search_ranking.rank_search_results(self.rows, filters)), ["Priya", "Maya", "Aaron"])
+
+    def test_public_data_adds_score_reasons_and_missed_filters_only(self):
+        result = search_ranking.rank_search_results(self.rows, self.filters)[2]
+        self.assertEqual(result.public["name"], "Maya")
+        self.assertEqual(result.public["missed_filters"], ["advice_topics"])
+        self.assertEqual(result.public["match_reasons"],
+                         ["Advises on interview", "9.0/10 (20 reviews)", "Answers 95% of requests"])
+        self.assertTrue(0 <= result.public["score"] <= 1)
+        for internal in search_ranking.INTERNAL_FIELDS:
+            self.assertNotIn(internal, result.public)
+
+    def test_order_is_the_same_whatever_order_rows_arrive_in(self):
+        forward = self.names(search_ranking.rank_search_results(self.rows, self.filters))
+        backward = self.names(search_ranking.rank_search_results(list(reversed(self.rows)), self.filters))
+        self.assertEqual(forward, backward)
+
+
 if __name__ == "__main__":
     unittest.main()

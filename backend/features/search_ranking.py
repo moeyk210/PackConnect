@@ -99,3 +99,58 @@ def match_reasons(row, filters, group):
     if row["response_answered"] + row["response_unanswered"] > 0:
         reasons.append(f"Answers {row['reputation']['response_rate']}% of requests")
     return reasons
+
+
+# Columns the route selects only so results can be ranked. They are removed
+# before results are sent, so responses keep their original public fields.
+INTERNAL_FIELDS = ("course_keys", "courses", "response_answered", "response_unanswered")
+
+
+@dataclass(frozen=True)
+class RankedResult:
+    """One advisor's place in the results and the public data sent for them."""
+
+    group: int
+    public: dict
+
+
+def _advisor_facts(row):
+    return ranking.AdvisorFacts(
+        id=row["id"],
+        name=row["name"],
+        completed_courses=row["course_keys"],
+        advice_topics=row.get("advice_topics") or "",
+        average_rating=row["reputation"]["average_rating"],
+        rating_count=row["reputation"]["rating_count"] or 0,
+        answered_requests=row["response_answered"],
+        unanswered_requests=row["response_unanswered"],
+    )
+
+
+def rank_search_results(rows, filters):
+    """Group, score and order search rows. Returns RankedResults, matches first.
+
+    Order: group, then fewest missed filters, then best fit (score, name, id).
+    """
+    search = ranking.SearchRequest(
+        courses=[filters.course_key] if filters.course_key else [],
+        topic=filters.text.get("advice_topics", ""),
+    )
+    placed = []
+    for row in rows:
+        if not filters.include_unrated and not row["reputation"]["rating_count"]:
+            continue
+        missed = missed_filters(row, filters)
+        group = result_group(row, filters, missed)
+        if group is None:
+            continue
+        scored = ranking.score_advisor(search, _advisor_facts(row))
+        public = {key: value for key, value in row.items() if key not in INTERNAL_FIELDS}
+        public.update(
+            score=round(scored.score, 3),
+            match_reasons=match_reasons(row, filters, group),
+            missed_filters=missed,
+        )
+        order = (group, len(missed), *ranking.best_fit_order(scored))
+        placed.append((order, RankedResult(group=group, public=public)))
+    return [result for _, result in sorted(placed, key=lambda pair: pair[0])]
