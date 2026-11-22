@@ -16,8 +16,8 @@ from features.meetings import create_meetings_blueprint
 from features.recovery import create_recovery_blueprint
 from features.typing import register_typing
 from features.feedback import create_feedback_blueprint
-from features.reputation import (create_reputation_blueprint, reputation_columns, reputation_join,
-                                 response_count_columns, with_reputation)
+from features.reputation import create_reputation_blueprint, reputation_columns, reputation_join, with_reputation
+from features.advisor_candidates import NOT_BLOCKED_SQL, course_key_sql, fetch_advisor_rows
 from features.search_ranking import (TEXT_FILTERS, SearchFilters, course_subject, page_settings,
                                      rank_search_results, results_page)
 from features.lifecycle import lock_students
@@ -365,11 +365,6 @@ def course_key(value):
     return re.sub(r"[\s-]+", "", value).upper()
 
 
-def course_key_sql(column):
-    """The database version of course_key(), for a fixed column name (never user input)."""
-    return f"regexp_replace(UPPER({column}), '[[:space:]-]+', '', 'g')"
-
-
 @app.route("/api/courses")
 def suggest_courses():
     query = course_key(request.args.get("q", ""))
@@ -413,8 +408,8 @@ def search_students():
     parameters = []
     viewer = session.get("student_id")
     if viewer:
-        conditions.append("NOT EXISTS (SELECT 1 FROM student_blocks b WHERE (b.blocker_id=%s AND b.blocked_id=s.id) OR (b.blocker_id=s.id AND b.blocked_id=%s))")
-        parameters.extend([viewer,viewer])
+        conditions.append(NOT_BLOCKED_SQL)
+        parameters.extend([viewer, viewer])
 
     if filters.course_key:
         # Advisors who took the searched course or another course in its subject.
@@ -430,26 +425,10 @@ def search_students():
     if available != "false":
         conditions.append(f"({availability_status_sql()}) = 'available'")
 
-    # Course lists come back in the same order, so each code lines up with its key.
-    courses_in_order = "FROM completed_courses c WHERE c.student_id = s.id ORDER BY c.course_code, c.id"
     with get_db() as db:
-        rows = db.execute(f"""
-            SELECT
-                s.id,
-                s.name,
-                s.program,
-                s.year,
-                s.skills,
-                s.advice_topics,
-                s.willing_to_advise, {availability_columns()}, {reputation_columns()},
-                {response_count_columns()},
-                ARRAY(SELECT c.course_code {courses_in_order}) AS courses,
-                ARRAY(SELECT {course_key_sql("c.course_code")} {courses_in_order}) AS course_keys
-            FROM students s {workload_join()} {reputation_join()}
-            WHERE {" AND ".join(conditions)}
-        """, parameters).fetchall()
+        rows = fetch_advisor_rows(db, conditions, parameters)
 
-    results = rank_search_results([with_reputation(row) for row in rows], filters)
+    results = rank_search_results(rows, filters)
     return jsonify(results_page(results, limit, offset))
 
 
