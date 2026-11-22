@@ -39,3 +39,17 @@ RATING_STARTING_WEIGHT = 3
 
 RESPONSE_STARTING_RATE = 0.8
 RESPONSE_STARTING_WEIGHT = 3
+
+
+def course_match(wanted_courses, completed_courses):
+    """Return the share of the wanted courses that the advisor has completed.
+
+    Returns None when the student did not ask about any course, because the
+    factor then says nothing about fit and should be left out of the score.
+    Course codes must already be written the same way (for example "CSC 510");
+    the caller cleans them up with the app's shared course-code helper.
+    """
+    wanted = set(wanted_courses)
+    if not wanted:
+        return None
+    return len(wanted & set(completed_courses)) / len(wanted)
