@@ -118,7 +118,8 @@ class RankedResult:
     public: dict
 
 
-def _advisor_facts(row):
+def advisor_facts(row):
+    """Convert an advisor row (from features/advisor_candidates.py) into the facts ranking scores."""
     return ranking.AdvisorFacts(
         id=row["id"],
         name=row["name"],
@@ -148,7 +149,7 @@ def rank_search_results(rows, filters):
         group = result_group(row, filters, missed)
         if group is None:
             continue
-        scored = ranking.score_advisor(search, _advisor_facts(row))
+        scored = ranking.score_advisor(search, advisor_facts(row))
         public = {key: value for key, value in row.items() if key not in INTERNAL_FIELDS}
         public.update(
             score=round(scored.score, 3),
