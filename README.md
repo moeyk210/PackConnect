@@ -185,6 +185,7 @@ Open that URL in your browser. **The frontend is the actual website; port 5000 s
 | GET | `/api/health` | Returns `{"status":"ok"}` |
 | POST | `/api/auth/register` | Creates an account and student profile; returns 201, 400 for invalid input, or 409 for a duplicate email |
 | GET | `/api/students/search?course=CSC%20510` | Ranks students who completed the course, best fit first, with near misses listed separately and 20 per page. See [smart matching](docs/SMART_MATCHING.md) |
+| GET | `/api/recommendations` | Signed-in only: up to five advisors for your current courses, best fit first. See [smart matching](docs/SMART_MATCHING.md#recommended-for-you) |
 | GET | `/api/courses?q=CSC` | Suggests up to ten distinct completed-course codes matching a prefix; case, spaces, and hyphens are ignored |
 | GET | `/api/students/1` | Retrieves a student's full profile |
 | GET / POST | `/api/requests` | List your requests or create one for another registered advisor |

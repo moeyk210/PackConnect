@@ -77,6 +77,29 @@ before, plus:
   or `"Took CSC 540"` for advisors from a different course.
 - `missed_filters`: the filters they do not meet, for example `["program"]`.
 
+## Recommended for you
+
+`GET /api/recommendations` suggests advisors for the courses the signed-in
+student is taking now (their current courses, set under Edit Profile). It uses
+the same scoring as search (`backend/features/recommendations.py`).
+
+- Signed-out visitors get 401.
+- No current courses gives an empty list.
+- An advisor must have completed at least one current course; covering more of
+  them ranks higher.
+- Left out: the student, anyone blocked either way, anyone not taking requests
+  right now, and anyone the student already has history with (a request either
+  way that is waiting, accepted, completed, or declined). Cancelled and expired
+  requests do not count as history.
+- Up to 5 advisors, best fit first.
+
+Response:
+
+```json
+{ "students": [ { "...": "same fields as search", "score": 0.91,
+                  "match_reasons": ["Took CSC 510 and CSC 540", "9.0/10 (20 reviews)"] } ] }
+```
+
 ## Verification
 
 ```powershell
@@ -84,5 +107,6 @@ before, plus:
 .\.venv\Scripts\python.exe -m unittest discover -s backend -p "test_search_ranking.py" -v
 ```
 
-These need no database. `backend/tests/test_search.py` checks the same rules end
-to end and needs `TEST_DATABASE_URL`, as described in [Supabase setup](SUPABASE.md).
+These need no database. `backend/tests/test_search.py` and
+`backend/tests/test_recommendations.py` check the rules end to end and need
+`TEST_DATABASE_URL`, as described in [Supabase setup](SUPABASE.md).
