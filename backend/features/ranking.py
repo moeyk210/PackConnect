@@ -75,9 +75,26 @@ def _base_word(word):
     return word
 
 
+def _words(text):
+    return re.findall(r"[a-z0-9]+", (text or "").lower())
+
+
 def _meaningful_words(text):
-    words = re.findall(r"[a-z0-9]+", (text or "").lower())
-    return {_base_word(word) for word in words if word not in IGNORED_WORDS}
+    return {_base_word(word) for word in _words(text) if word not in IGNORED_WORDS}
+
+
+def matching_topic_words(asked_topic, advisor_topics):
+    """Return the student's own topic words that the advisor's topics cover, in the order typed.
+
+    Used to explain a match (for example "Advises on interview prep") with the
+    same word rules that produce the topic score.
+    """
+    covered = _meaningful_words(advisor_topics)
+    matched = []
+    for word in _words(asked_topic):
+        if word not in IGNORED_WORDS and _base_word(word) in covered and word not in matched:
+            matched.append(word)
+    return matched
 
 
 def topic_match(asked_topic, advisor_topics):

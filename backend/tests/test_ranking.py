@@ -70,6 +70,22 @@ class TopicMatchTests(unittest.TestCase):
         self.assertEqual(ranking.topic_match("interviews", None), 0.0)
 
 
+class MatchingTopicWordsTests(unittest.TestCase):
+    def test_returns_the_covered_words_as_the_student_typed_them(self):
+        self.assertEqual(ranking.matching_topic_words("Interview prep", "interviews, prep sessions"), ["interview", "prep"])
+
+    def test_leaves_out_uncovered_and_filler_words(self):
+        self.assertEqual(ranking.matching_topic_words("help with interview prep", "Projects, interviews"), ["interview"])
+
+    def test_no_overlap_or_no_topic_gives_an_empty_list(self):
+        self.assertEqual(ranking.matching_topic_words("interviews", "Course workload"), [])
+        self.assertEqual(ranking.matching_topic_words("", "Projects"), [])
+        self.assertEqual(ranking.matching_topic_words("projects", None), [])
+
+    def test_repeated_words_appear_once(self):
+        self.assertEqual(ranking.matching_topic_words("projects projects", "Projects"), ["projects"])
+
+
 def scaled_rating(rating):
     """Convert a 1-10 rating to the 0-1 scale the factors use."""
     return (rating - 1) / 9
