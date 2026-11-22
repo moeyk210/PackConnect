@@ -108,5 +108,26 @@ class RatingScoreTests(unittest.TestCase):
                 self.assertTrue(0 <= ranking.rating_score(average, count) <= 1)
 
 
+class ResponseScoreTests(unittest.TestCase):
+    # These expected values assume a starting rate of 0.8 worth 3 requests.
+    def setUp(self):
+        self.assertEqual((ranking.RESPONSE_STARTING_RATE, ranking.RESPONSE_STARTING_WEIGHT), (0.8, 3))
+
+    def test_no_history_gets_the_starting_rate(self):
+        self.assertAlmostEqual(ranking.response_score(0, 0), 0.8)
+        self.assertAlmostEqual(ranking.response_score(None, None), 0.8)
+
+    def test_known_history_is_blended_with_the_starting_rate(self):
+        # (0.8 * 3 + 5) / (3 + 7) = 0.74
+        self.assertAlmostEqual(ranking.response_score(5, 2), 0.74)
+
+    def test_long_reliable_history_beats_one_answer(self):
+        self.assertGreater(ranking.response_score(48, 2), ranking.response_score(1, 0))
+
+    def test_ignoring_requests_lowers_the_score(self):
+        self.assertLess(ranking.response_score(0, 4), ranking.response_score(0, 0))
+        self.assertLess(ranking.response_score(2, 8), ranking.response_score(8, 2))
+
+
 if __name__ == "__main__":
     unittest.main()

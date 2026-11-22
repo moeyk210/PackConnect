@@ -112,3 +112,16 @@ def rating_score(average_rating, rating_count):
     total = (average_rating or 0) * count
     blended = _blend_with_starting_value(total, count, RATING_STARTING_VALUE, RATING_STARTING_WEIGHT)
     return (blended - LOWEST_RATING) / (HIGHEST_RATING - LOWEST_RATING)
+
+
+def response_score(answered_requests, unanswered_requests):
+    """Return how reliably the advisor answers requests, from 0 to 1.
+
+    Answered requests were accepted, declined, or completed. Unanswered ones
+    expired without a reply. These counts follow the same rules as the advisor
+    reputation stats. Like ratings, a short history is blended with the starting
+    rate, so answering 1 of 1 requests does not beat answering 48 of 50.
+    """
+    answered = answered_requests or 0
+    total = answered + (unanswered_requests or 0)
+    return _blend_with_starting_value(answered, total, RESPONSE_STARTING_RATE, RESPONSE_STARTING_WEIGHT)
