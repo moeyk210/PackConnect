@@ -4,7 +4,9 @@ import app as portal
 from tests.postgres_test_support import PostgresTestCase, sign_in
 
 
-class SearchTests(PostgresTestCase):
+class SearchFixture(PostgresTestCase):
+    """Fictional profiles shared by the search tests below."""
+
     def setUp(self):
         super().setUp()
         self.client = portal.app.test_client()
@@ -48,6 +50,8 @@ class SearchTests(PostgresTestCase):
         self.assertEqual([row["id"] for row in rows], [self.ids[name] for name in sorted(expected)])
         return rows
 
+
+class SearchTests(SearchFixture):
     def test_course_search_normalizes_case_and_outer_whitespace(self):
         for course in ("CSC 510", "csc 510", "  CsC 510  ", "CSC510", "csc-510", "CSC   510"):
             with self.subTest(course=course):
@@ -173,3 +177,69 @@ class SearchTests(PostgresTestCase):
                     "score", "match_reasons", "missed_filters"}
         for row in rows:
             self.assertEqual(set(row), expected)
+
+
+class RankedSearchTests(SearchFixture):
+    """Ranking, the outside-your-filters group and paging, on the same fictional profiles.
+
+    CSC 510: Ada, Blake, Casey, Faye (advising) and Dev (not advising).
+    CSC 540: Eli. No one has ratings, so order comes from fit and responsiveness.
+    """
+
+    def response(self, **params):
+        response = self.client.get("/api/students/search", query_string=params)
+        self.assertEqual(response.status_code, 200, response.get_json())
+        return response.get_json()
+
+    def names(self, rows):
+        return [row["name"] for row in rows]
+
+    def test_unresponsive_advisor_ranks_below_others_instead_of_alphabetically(self):
+        with portal.get_db() as db:
+            for sender in ("Blake", "Casey", "Eli"):
+                db.execute("""
+                    INSERT INTO advice_requests (sender_id, recipient_id, course_code, advice_topic, message, status)
+                    VALUES (%s, %s, 'CSC 510', 'Projects', 'Can you help?', 'expired')
+                """, (self.ids[sender], self.ids["Ada"]))
+        self.assertEqual(self.names(self.response(course="CSC 510")["students"]), ["Blake", "Casey", "Faye", "Ada"])
+
+    def test_near_misses_are_listed_outside_the_filters(self):
+        data = self.response(course="CSC 510", program="Statistics")
+        self.assertEqual(self.names(data["students"]), ["Casey"])
+        self.assertEqual(self.names(data["outside_filters"]), ["Ada", "Blake", "Faye"])
+        self.assertTrue(all(row["missed_filters"] == ["program"] for row in data["outside_filters"]))
+
+    def test_fewer_missed_filters_rank_higher_outside_the_filters(self):
+        data = self.response(course="CSC 510", program="Computer", year="Second", advice_topics="Workload")
+        self.assertEqual(self.names(data["students"]), ["Faye"])
+        # Casey and Ada each miss one filter; Casey's topic matches, so she fits better.
+        # Blake misses two. Eli took CSC 540, so he comes after everyone who took CSC 510.
+        self.assertEqual(self.names(data["outside_filters"]), ["Casey", "Ada", "Blake", "Eli"])
+
+    def test_other_courses_in_the_subject_come_after_the_searched_course(self):
+        data = self.response(course="CSC 510")
+        self.assertEqual(self.names(data["students"]), ["Ada", "Blake", "Casey", "Faye"])
+        self.assertEqual(self.names(data["outside_filters"]), ["Eli"])
+        self.assertEqual(data["outside_filters"][0]["match_reasons"], ["Took CSC 540", "No reviews yet"])
+
+    def test_other_subjects_never_appear(self):
+        data = self.response(course="MA 101")
+        self.assertEqual((data["students"], data["outside_filters"]), ([], []))
+
+    def test_pages_are_stable_and_do_not_overlap(self):
+        everyone = self.response(course="CSC 510")
+        full = self.names(everyone["students"] + everyone["outside_filters"])
+        pages = [self.response(course="CSC 510", limit=2, offset=offset) for offset in (0, 2, 4)]
+        paged = [name for page in pages for name in self.names(page["students"] + page["outside_filters"])]
+        self.assertEqual(paged, full)
+        self.assertEqual((pages[0]["total_matches"], pages[0]["total_outside_filters"]), (4, 1))
+
+    def test_invalid_paging_is_rejected(self):
+        for params in ({"limit": "abc"}, {"limit": "0"}, {"offset": "-1"}):
+            with self.subTest(params=params):
+                response = self.client.get("/api/students/search", query_string={"course": "CSC 510", **params})
+                self.assertEqual(response.status_code, 400)
+
+    def test_unchecking_no_reviews_hides_unrated_advisors(self):
+        data = self.response(course="CSC 510", include_unrated="false")
+        self.assertEqual((data["students"], data["outside_filters"]), ([], []))
