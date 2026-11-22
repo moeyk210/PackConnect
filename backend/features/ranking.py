@@ -187,15 +187,17 @@ def score_advisor(search, advisor, weights=RANKING_WEIGHTS):
 SCORE_PRECISION = 6
 
 
-def rank_advisors(search, advisors, weights=RANKING_WEIGHTS):
-    """Score every advisor and return them best fit first.
+def best_fit_order(result):
+    """Sort key for an AdvisorScore: highest score first, then name, then id.
 
     Ties are broken by name and then by id, so the order is always the same for
     the same data. Splitting results into pages relies on that: without a fixed
     order, one advisor could appear on two pages while another is skipped.
     """
+    return (-round(result.score, SCORE_PRECISION), result.advisor.name.lower(), result.advisor.id)
+
+
+def rank_advisors(search, advisors, weights=RANKING_WEIGHTS):
+    """Score every advisor and return them best fit first (see best_fit_order)."""
     scored = [score_advisor(search, advisor, weights) for advisor in advisors]
-    return sorted(
-        scored,
-        key=lambda result: (-round(result.score, SCORE_PRECISION), result.advisor.name.lower(), result.advisor.id),
-    )
+    return sorted(scored, key=best_fit_order)
