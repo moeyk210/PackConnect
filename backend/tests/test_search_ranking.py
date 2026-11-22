@@ -175,5 +175,51 @@ class RankSearchResultsTests(unittest.TestCase):
         self.assertEqual(forward, backward)
 
 
+class PageSettingsTests(unittest.TestCase):
+    def test_defaults_to_twenty_from_the_start(self):
+        self.assertEqual(search_ranking.page_settings({}), (20, 0))
+
+    def test_reads_limit_and_offset(self):
+        self.assertEqual(search_ranking.page_settings({"limit": "5", "offset": "10"}), (5, 10))
+
+    def test_large_limits_are_lowered_to_the_maximum(self):
+        self.assertEqual(search_ranking.page_settings({"limit": "10000"}), (50, 0))
+
+    def test_invalid_values_are_rejected(self):
+        for args in ({"limit": "abc"}, {"limit": "0"}, {"limit": "-3"}, {"offset": "-1"}, {"offset": "1.5"}):
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                search_ranking.page_settings(args)
+
+
+class ResultsPageTests(unittest.TestCase):
+    def setUp(self):
+        # 3 matches followed by 2 advisors outside the filters, already in order.
+        self.results = [search_ranking.RankedResult(group=0, public={"id": n}) for n in (1, 2, 3)]
+        self.results += [search_ranking.RankedResult(group=1, public={"id": 4}),
+                         search_ranking.RankedResult(group=2, public={"id": 5})]
+
+    def ids(self, page):
+        return [s["id"] for s in page["students"]] + [s["id"] for s in page["outside_filters"]]
+
+    def test_page_splits_into_matches_and_outside_filters(self):
+        page = search_ranking.results_page(self.results, 20, 0)
+        self.assertEqual([s["id"] for s in page["students"]], [1, 2, 3])
+        self.assertEqual([s["id"] for s in page["outside_filters"]], [4, 5])
+        self.assertEqual((page["total_matches"], page["total_outside_filters"]), (3, 2))
+
+    def test_pages_do_not_overlap_or_skip_anyone(self):
+        pages = [search_ranking.results_page(self.results, 2, offset) for offset in (0, 2, 4)]
+        self.assertEqual([self.ids(page) for page in pages], [[1, 2], [3, 4], [5]])
+
+    def test_totals_cover_all_pages(self):
+        page = search_ranking.results_page(self.results, 2, 4)
+        self.assertEqual((page["total_matches"], page["total_outside_filters"]), (3, 2))
+        self.assertEqual((page["limit"], page["offset"]), (2, 4))
+
+    def test_offset_past_the_end_gives_empty_lists(self):
+        page = search_ranking.results_page(self.results, 20, 99)
+        self.assertEqual((page["students"], page["outside_filters"]), ([], []))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -22,6 +22,10 @@ from features import ranking
 # field contains the wanted text, ignoring capital letters.
 TEXT_FILTERS = ("program", "year", "skills", "advice_topics")
 
+# Paging: results per page when none is asked for, and the most allowed at once.
+DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = 50
+
 # Result groups, in the order they are shown. Lower numbers come first.
 YOUR_MATCHES = 0
 OUTSIDE_CLOSE = 1          # Took the searched course (or no course was searched) but missed filters.
@@ -154,3 +158,41 @@ def rank_search_results(rows, filters):
         order = (group, len(missed), *ranking.best_fit_order(scored))
         placed.append((order, RankedResult(group=group, public=public)))
     return [result for _, result in sorted(placed, key=lambda pair: pair[0])]
+
+
+def _whole_number(value, name):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a whole number.") from None
+
+
+def page_settings(args):
+    """Read limit and offset from the query string. Raises ValueError for invalid values.
+
+    A limit above MAX_PAGE_SIZE is lowered to it rather than rejected.
+    """
+    limit = _whole_number(args.get("limit", DEFAULT_PAGE_SIZE), "Limit")
+    offset = _whole_number(args.get("offset", 0), "Offset")
+    if limit < 1:
+        raise ValueError("Limit must be at least 1.")
+    if offset < 0:
+        raise ValueError("Offset cannot be negative.")
+    return min(limit, MAX_PAGE_SIZE), offset
+
+
+def results_page(results, limit, offset):
+    """Cut one page from the ordered results and split it into the two groups.
+
+    Paging runs across both groups in order, so a page can hold the last matches
+    and the first advisors outside the filters. Totals cover all pages.
+    """
+    page = results[offset:offset + limit]
+    return {
+        "students": [result.public for result in page if result.group == YOUR_MATCHES],
+        "outside_filters": [result.public for result in page if result.group != YOUR_MATCHES],
+        "total_matches": sum(result.group == YOUR_MATCHES for result in results),
+        "total_outside_filters": sum(result.group != YOUR_MATCHES for result in results),
+        "limit": limit,
+        "offset": offset,
+    }
