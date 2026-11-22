@@ -16,7 +16,10 @@ from features.meetings import create_meetings_blueprint
 from features.recovery import create_recovery_blueprint
 from features.typing import register_typing
 from features.feedback import create_feedback_blueprint
-from features.reputation import create_reputation_blueprint, reputation_columns, reputation_join, with_reputation
+from features.reputation import (create_reputation_blueprint, reputation_columns, reputation_join,
+                                 response_count_columns, with_reputation)
+from features.search_ranking import (TEXT_FILTERS, SearchFilters, course_subject, page_settings,
+                                     rank_search_results, results_page)
 from features.lifecycle import lock_students
 from features.availability import availability_payload, workload_join, availability_columns, availability_status_sql
 
@@ -362,6 +365,11 @@ def course_key(value):
     return re.sub(r"[\s-]+", "", value).upper()
 
 
+def course_key_sql(column):
+    """The database version of course_key(), for a fixed column name (never user input)."""
+    return f"regexp_replace(UPPER({column}), '[[:space:]-]+', '', 'g')"
+
+
 @app.route("/api/courses")
 def suggest_courses():
     query = course_key(request.args.get("q", ""))
@@ -382,15 +390,24 @@ def suggest_courses():
 @app.route("/api/students/search")
 def search_students():
     course = request.args.get("course", "").strip().upper()
-    program = request.args.get("program", "").strip()
-    year = request.args.get("year", "").strip()
-    skills = request.args.get("skills", "").strip()
-    advice_topics = request.args.get("advice_topics", "").strip()
+    text_filters = {name: request.args.get(name, "").strip() for name in TEXT_FILTERS}
     available = request.args.get("available", "true").strip().lower()
+    try:
+        limit, offset = page_settings(request.args)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    filters = SearchFilters(
+        course_key=course_key(course),
+        text={name: value for name, value in text_filters.items() if value},
+        include_unrated=request.args.get("include_unrated", "true").strip().lower() != "false",
+    )
 
-    if not any((course, program, year, skills, advice_topics)):
-        return jsonify({"students": []})
+    if not filters.course_key and not filters.text:
+        return jsonify(results_page([], limit, offset))
 
+    # The database only narrows the candidates; search_ranking decides who is a
+    # match, who is outside the filters, and the order. Text filters are checked
+    # there too, so near misses can still be shown below the matches.
     # Include both local accounts and confirmed Supabase registrations.
     conditions = [registered_student_sql()]
     parameters = []
@@ -399,50 +416,41 @@ def search_students():
         conditions.append("NOT EXISTS (SELECT 1 FROM student_blocks b WHERE (b.blocker_id=%s AND b.blocked_id=s.id) OR (b.blocker_id=s.id AND b.blocked_id=%s))")
         parameters.extend([viewer,viewer])
 
-    if course:
-        conditions.append("""
+    if filters.course_key:
+        # Advisors who took the searched course or another course in its subject.
+        subject = course_subject(filters.course_key)
+        conditions.append(f"""
             EXISTS (
-                SELECT 1
-                FROM completed_courses c
-                WHERE c.student_id = s.id
-                  AND regexp_replace(UPPER(c.course_code), '[[:space:]-]+', '', 'g') = %s
+                SELECT 1 FROM completed_courses c
+                WHERE c.student_id = s.id AND {course_key_sql("c.course_code")} {"LIKE" if subject else "="} %s
             )
         """)
-        parameters.append(course_key(course))
+        parameters.append(subject + "%" if subject else filters.course_key)
 
     if available != "false":
         conditions.append(f"({availability_status_sql()}) = 'available'")
 
-    for column, value in (
-        ("s.program", program),
-        ("s.year", year),
-        ("s.skills", skills),
-        ("s.advice_topics", advice_topics),
-    ):
-        if value:
-            conditions.append(f"LOWER(COALESCE({column}, '')) LIKE %s")
-            parameters.append(f"%{value.lower()}%")
-
-    where_clause = " AND ".join(conditions) if conditions else "1 = 1"
-
+    # Course lists come back in the same order, so each code lines up with its key.
+    courses_in_order = "FROM completed_courses c WHERE c.student_id = s.id ORDER BY c.course_code, c.id"
     with get_db() as db:
         rows = db.execute(f"""
-            SELECT DISTINCT
+            SELECT
                 s.id,
                 s.name,
                 s.program,
                 s.year,
                 s.skills,
                 s.advice_topics,
-                s.willing_to_advise, {availability_columns()}, {reputation_columns()}
+                s.willing_to_advise, {availability_columns()}, {reputation_columns()},
+                {response_count_columns()},
+                ARRAY(SELECT c.course_code {courses_in_order}) AS courses,
+                ARRAY(SELECT {course_key_sql("c.course_code")} {courses_in_order}) AS course_keys
             FROM students s {workload_join()} {reputation_join()}
-            WHERE {where_clause}
-            ORDER BY s.name
+            WHERE {" AND ".join(conditions)}
         """, parameters).fetchall()
 
-    return jsonify({
-        "students": [with_reputation(row) for row in rows]
-    })
+    results = rank_search_results([with_reputation(row) for row in rows], filters)
+    return jsonify(results_page(results, limit, offset))
 
 
 @app.route("/api/students/<int:student_id>")
