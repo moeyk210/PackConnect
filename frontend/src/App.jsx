@@ -11,6 +11,7 @@ import {
 } from './Community'
 import CourseAutocomplete from './CourseAutocomplete'
 import { availabilityLabel, capacityLabel } from './advisorAvailability'
+import ReputationBadges from './ReputationBadges'
 
 const API_URL = ''
 
@@ -834,6 +835,7 @@ function App({ user, onLogout, route, onUserUpdated }) {
                       {availabilityLabel(student)}
                     </span>
                     <p className="profile-note">{capacityLabel(student)}</p>
+                    <ReputationBadges reputation={student.reputation} />
 
                     <a
                       className="profile-button peer-profile-link"
@@ -974,6 +976,10 @@ function App({ user, onLogout, route, onUserUpdated }) {
                   {availabilityLabel(selectedStudent)}
                 </p>
                 <p className="profile-note">{capacityLabel(selectedStudent)}</p>
+                <ReputationBadges
+                  reputation={selectedStudent.reputation}
+                  detailed
+                />
               </div>
             </div>
             {selectedStudent.id !== user.id && (
