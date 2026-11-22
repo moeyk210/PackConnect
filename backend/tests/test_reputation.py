@@ -28,6 +28,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import app as portal
+from features.reputation import reputation_join, response_count_columns
 from tests.postgres_test_support import PostgresTestCase
 
 EMPTY = {"average_rating": None, "rating_count": 0, "helpful_percent": None,
@@ -143,6 +144,15 @@ class ReputationStatsTests(ReputationTestCase):
     def test_missing_student_gets_404(self):
         response = portal.app.test_client().get("/api/students/999999/reputation")
         self.assertEqual(response.status_code, 404)
+
+    def test_raw_response_counts_match_the_response_rate(self):
+        with portal.get_db() as db:
+            counts = db.execute(
+                f"SELECT {response_count_columns()} FROM students s {reputation_join()} WHERE s.id = %s",
+                (self.ids["busy"],),
+            ).fetchone()
+        # Same rules as response_rate: 5 answered, 2 unanswered (71%).
+        self.assertEqual((counts["response_answered"], counts["response_unanswered"]), (5, 2))
 
 
 class ReputationPrivacyTests(ReputationTestCase):

@@ -43,6 +43,17 @@ def reputation_columns():
         round(100.0 * rep_r.answered / NULLIF(rep_r.answered + rep_r.unanswered, 0))::int AS {PREFIX}response_rate"""
 
 
+def response_count_columns():
+    """The raw counts behind response_rate, for ranking only.
+
+    Ranking needs the counts (not the rounded percentage) to tell a short
+    history from a long one. These columns are never part of the public stats.
+    Use together with reputation_join().
+    """
+    return """rep_r.answered AS response_answered,
+        rep_r.unanswered AS response_unanswered"""
+
+
 def with_reputation(row):
     """Move the flat reputation_* columns of a result row into a nested object."""
     record = dict(row)
