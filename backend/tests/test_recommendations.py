@@ -126,3 +126,25 @@ class PastConnectionTests(RecommendationsTestCase):
         self.add_advisor("Priya", ["CSC 510"])
         self.request("Ana", "Priya", "pending", overdue=True)
         self.assertEqual(self.recommended(), ["Priya"])
+
+
+class RecommendationReasonsAndLimitTests(RecommendationsTestCase):
+    def reasons(self):
+        rows = self.client.get("/api/recommendations").get_json()["students"]
+        return {row["name"]: row["match_reasons"] for row in rows}
+
+    def test_reasons_name_the_current_courses_the_advisor_took(self):
+        self.add_advisor("Maya", ["CSC 510", "CSC 540", "CSC 316"])
+        self.add_advisor("Zoe", ["CSC 510"])
+        self.assertEqual(self.reasons(), {
+            "Maya": ["Took CSC 510 and CSC 540", "No reviews yet"],
+            "Zoe": ["Took CSC 510", "No reviews yet"],
+        })
+
+    def test_shows_at_most_five_best_fits(self):
+        self.add_advisor("Maya", ["CSC 510", "CSC 540"])
+        for number in range(1, 8):
+            self.add_advisor(f"Advisor {number}", ["CSC 510"])
+        names = self.recommended()
+        self.assertEqual(len(names), 5)
+        self.assertEqual(names[0], "Maya")

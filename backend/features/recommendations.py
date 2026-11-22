@@ -20,7 +20,10 @@ from core.identity import registered_student_sql, session_student_id
 from features import ranking
 from features.advisor_candidates import NOT_BLOCKED_SQL, course_key_sql, fetch_advisor_rows
 from features.availability import availability_status_sql
-from features.search_ranking import INTERNAL_FIELDS, advisor_facts
+from features.search_ranking import INTERNAL_FIELDS, advisor_facts, reputation_reasons
+
+# The most advisors shown at once. Students can search a course for the full list.
+RECOMMENDATION_LIMIT = 5
 
 
 def current_course_keys(db, student_id):
@@ -56,14 +59,30 @@ def candidate_rows(db, student_id, course_keys):
     return fetch_advisor_rows(db, conditions, parameters)
 
 
+def joined(items):
+    """Join labels as plain English: "A", "A and B", "A, B and C"."""
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def recommendation_reasons(row, course_keys):
+    """Explain a recommendation: which of the student's current courses the advisor took, then reviews.
+
+    Course codes are shown as the advisor saved them, once each.
+    """
+    taken = [code for code, key in zip(row["courses"], row["course_keys"]) if key in course_keys]
+    return ["Took " + joined(list(dict.fromkeys(taken)))] + reputation_reasons(row)
+
+
 def rank_recommendations(rows, course_keys):
-    """Order advisor rows best fit first for the given courses and return their public data with scores."""
+    """Return up to RECOMMENDATION_LIMIT advisors, best fit first, with scores and reasons."""
     rows_by_id = {row["id"]: row for row in rows}
     ranked = ranking.rank_advisors(ranking.SearchRequest(courses=course_keys), [advisor_facts(row) for row in rows])
     results = []
-    for scored in ranked:
-        public = {key: value for key, value in rows_by_id[scored.advisor.id].items() if key not in INTERNAL_FIELDS}
+    for scored in ranked[:RECOMMENDATION_LIMIT]:
+        row = rows_by_id[scored.advisor.id]
+        public = {key: value for key, value in row.items() if key not in INTERNAL_FIELDS}
         public["score"] = round(scored.score, 3)
+        public["match_reasons"] = recommendation_reasons(row, course_keys)
         results.append(public)
     return results
 
