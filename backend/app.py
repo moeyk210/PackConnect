@@ -14,6 +14,7 @@ from core.identity import create_auth_session, registered_student_sql, revoke_au
 from features.community import create_community_blueprint
 from features.meetings import create_meetings_blueprint
 from features.recovery import create_recovery_blueprint
+from features.typing import register_typing
 from features.feedback import create_feedback_blueprint
 from features.reputation import create_reputation_blueprint, reputation_columns, reputation_join, with_reputation
 from features.lifecycle import lock_students
@@ -77,6 +78,8 @@ app.register_blueprint(create_meetings_blueprint(get_db))
 app.register_blueprint(create_recovery_blueprint(get_db))
 app.register_blueprint(create_feedback_blueprint(get_db))
 app.register_blueprint(create_reputation_blueprint(get_db))
+register_realtime(app, get_db)
+register_typing(get_db)
 
 
 def normalize_courses(courses):

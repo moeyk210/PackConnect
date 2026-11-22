@@ -9,7 +9,7 @@ import app as portal
 from scripts import m0_eval, seed_demo
 from scripts.m0_eval import m0_counts, m0_report
 from scripts.seed_demo import DEMO_DOMAIN, DEMO_PASSWORD, EXPECTED_M0, seed_demo as seed
-from tests.postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase, sign_in
 
 SEEDED_REPORT = (
     "M0: 75.0% of accepted connections were rated helpful (9 of 12)\n"
@@ -139,8 +139,7 @@ class SeededM0Tests(PostgresTestCase):
 
     def test_unrated_seeded_connection_is_open_for_rating(self):
         client = portal.app.test_client()
-        with client.session_transaction() as session:
-            session["student_id"] = self.ids["dev"]
+        sign_in(client, self.ids["dev"])
         with portal.get_db() as db:
             request_id = db.execute("SELECT id FROM advice_requests WHERE sender_id = %s",
                                     (self.ids["dev"],)).fetchone()["id"]
