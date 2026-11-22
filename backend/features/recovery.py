@@ -13,6 +13,7 @@ from flask import Blueprint, current_app, jsonify, request
 from supabase import create_client
 from supabase.lib.client_options import SyncClientOptions
 from werkzeug.security import generate_password_hash
+from core.realtime import disconnect_user
 from features.lifecycle import lock_students
 
 
@@ -225,6 +226,7 @@ def create_recovery_blueprint(get_db):
                 "UPDATE students SET session_version=session_version+1 WHERE id=%s",
                 (row["student_id"],),
             )
+            disconnect_user(db, row["student_id"])  # old sessions lose their live sockets too
             db.execute(
                 "UPDATE password_reset_tokens SET used_at=now() WHERE student_id=%s AND used_at IS NULL",
                 (row["student_id"],),

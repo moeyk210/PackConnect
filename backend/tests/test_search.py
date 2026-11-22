@@ -1,7 +1,7 @@
 """Search behavior against independent fictional profiles in PostgreSQL."""
 
 import app as portal
-from tests.postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase, sign_in
 
 
 class SearchTests(PostgresTestCase):
@@ -77,8 +77,7 @@ class SearchTests(PostgresTestCase):
         suggestion = self.client.get('/api/courses?q=ece5').get_json()["courses"]
         self.assertEqual(suggestion, ["ECE 570"])
         self.assert_matches(["Eli"], course=suggestion[0])
-        with self.client.session_transaction() as session:
-            session["student_id"] = self.ids["Eli"]
+        sign_in(self.client, self.ids["Eli"])
         response = self.client.put(f'/api/students/{self.ids["Eli"]}', json={
             "name": "Eli", "program": "Computer Science", "year": "Second Year",
             "completed_courses": ["ECE 571"], "willing_to_advise": True,

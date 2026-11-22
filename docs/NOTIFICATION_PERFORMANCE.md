@@ -46,3 +46,14 @@ production build. Chrome verified the built app against isolated PostgreSQL:
 with a delayed save response, the badge cleared before the response, only one
 write and no immediate follow-up fetch were sent, and the saved unread count
 was zero. No JavaScript exceptions were reported.
+
+## Update: real-time notifications (issue #5)
+
+Regular polling is now only a fallback. While the real-time channel is
+connected, the bell refreshes when the server pushes a `notifications` event,
+and polls every five seconds only while disconnected. A newer refresh cancels
+any in flight, and at most one poll is ever scheduled, so a stale response
+cannot restore an old badge. Read actions also push a `notifications` event to
+the reader's other tabs. The tab that performed the action receives it too and
+refreshes once; if the save is still pending it waits five seconds. See
+[real-time messaging](REALTIME_MESSAGING.md).

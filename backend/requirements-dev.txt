@@ -1,0 +1,3 @@
+-r requirements.txt
+# Benchmark only (scripts/benchmark_messaging.py --mode push); not needed to run the app.
+python-socketio[client]>=5.18,<6

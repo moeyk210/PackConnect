@@ -3,7 +3,7 @@ from unittest.mock import patch
 from contextlib import contextmanager
 
 import app as portal
-from tests.postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase, sign_in
 
 
 class NotificationTests(PostgresTestCase):
@@ -21,10 +21,10 @@ class NotificationTests(PostgresTestCase):
                 db.execute("INSERT INTO accounts (student_id, email, password_hash) VALUES (%s, %s, %s)",
                            (student_id, name.lower() + "@example.edu", self.password_hash))
                 self.ids.append(student_id)
-                client = portal.app.test_client()
-                with client.session_transaction() as session:
-                    session["student_id"] = student_id
-                self.clients.append(client)
+        for student_id in self.ids:  # after commit: sessions reference the students
+            client = portal.app.test_client()
+            sign_in(client, student_id)
+            self.clients.append(client)
         self.sender, self.recipient, self.outsider = self.clients
 
     def request(self):
