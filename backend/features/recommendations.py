@@ -8,6 +8,10 @@ Rules agreed for issue #3:
   them ranks higher, using the same scoring as search (features/ranking.py).
 - The student, anyone blocked either way, and anyone not taking requests right
   now (paused, full, or not advising) are left out.
+- Anyone the student already has history with is left out, since the list is
+  for finding someone new: a request either way that is waiting, accepted,
+  completed, or declined. Cancelled and expired requests never connected the
+  two students, so they do not hide an advisor.
 """
 
 from flask import Blueprint, jsonify, session
@@ -28,17 +32,28 @@ def current_course_keys(db, student_id):
     return [row["code"] for row in rows]
 
 
+# Leaves out advisors with existing history with the student, in either direction.
+# A waiting request past its deadline counts as expired, as it does everywhere else.
+# Takes the student's id twice.
+NO_PAST_CONNECTION_SQL = """NOT EXISTS (SELECT 1 FROM advice_requests r
+    WHERE ((r.sender_id = %s AND r.recipient_id = s.id) OR (r.sender_id = s.id AND r.recipient_id = %s))
+      AND (r.status IN ('accepted', 'completed', 'declined')
+           OR (r.status = 'pending' AND r.expires_at > CURRENT_TIMESTAMP)))"""
+
+
 def candidate_rows(db, student_id, course_keys):
     """Advisors who completed at least one of the given courses and could take a request now."""
     conditions = [
         registered_student_sql(),
         "s.id <> %s",
         NOT_BLOCKED_SQL,
+        NO_PAST_CONNECTION_SQL,
         f"({availability_status_sql()}) = 'available'",
         f"""EXISTS (SELECT 1 FROM completed_courses c
             WHERE c.student_id = s.id AND {course_key_sql('c.course_code')} = ANY(%s))""",
     ]
-    return fetch_advisor_rows(db, conditions, [student_id, student_id, student_id, course_keys])
+    parameters = [student_id, student_id, student_id, student_id, student_id, course_keys]
+    return fetch_advisor_rows(db, conditions, parameters)
 
 
 def rank_recommendations(rows, course_keys):

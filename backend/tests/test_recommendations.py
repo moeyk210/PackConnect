@@ -96,3 +96,33 @@ class RecommendationRankingTests(RecommendationsTestCase):
         self.assertTrue(0 <= row["score"] <= 1)
         for internal in ("course_keys", "courses", "response_answered", "response_unanswered"):
             self.assertNotIn(internal, row)
+
+
+class PastConnectionTests(RecommendationsTestCase):
+    def request(self, sender, recipient, status, overdue=False):
+        with portal.get_db() as db:
+            db.execute("""
+                INSERT INTO advice_requests (sender_id, recipient_id, course_code, advice_topic, message, status, expires_at)
+                VALUES (%s, %s, 'CSC 510', 'Projects', 'Can you help?', %s,
+                        CURRENT_TIMESTAMP + (CASE WHEN %s THEN interval '-1 day' ELSE interval '7 days' END))
+            """, (self.ids[sender], self.ids[recipient], status, overdue))
+
+    def test_history_hides_an_advisor_but_never_connecting_does_not(self):
+        cases = {"pending": False, "accepted": False, "completed": False, "declined": False,
+                 "cancelled": True, "expired": True}
+        for status, still_recommended in cases.items():
+            with self.subTest(status=status):
+                name = f"Advisor {status}"
+                self.add_advisor(name, ["CSC 510"])
+                self.request("Ana", name, status)
+                self.assertEqual(name in self.recommended(), still_recommended)
+
+    def test_history_counts_whichever_student_sent_the_request(self):
+        self.add_advisor("Jordan", ["CSC 510"])
+        self.request("Jordan", "Ana", "completed")
+        self.assertEqual(self.recommended(), [])
+
+    def test_waiting_request_past_its_deadline_counts_as_expired(self):
+        self.add_advisor("Priya", ["CSC 510"])
+        self.request("Ana", "Priya", "pending", overdue=True)
+        self.assertEqual(self.recommended(), ["Priya"])
