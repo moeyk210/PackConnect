@@ -52,3 +52,47 @@ class RecommendationAccessTests(RecommendationsTestCase):
         with portal.get_db() as db:
             db.execute("DELETE FROM current_courses WHERE student_id = %s", (self.ids["Ana"],))
         self.assertEqual(self.recommended(), [])
+
+
+class RecommendationRankingTests(RecommendationsTestCase):
+    def test_covering_more_current_courses_ranks_higher(self):
+        self.add_advisor("Zoe", ["CSC 510"])
+        self.add_advisor("Maya", ["CSC-510", "csc 540"])
+        self.add_advisor("Kai", ["CSC 540"])
+        self.assertEqual(self.recommended(), ["Maya", "Kai", "Zoe"])
+
+    def test_advisors_who_took_none_of_the_current_courses_are_left_out(self):
+        self.add_advisor("Ben", ["CSC 316"])
+        self.add_advisor("Zoe", ["CSC 510"])
+        self.assertEqual(self.recommended(), ["Zoe"])
+
+    def test_the_student_is_never_recommended_to_themselves(self):
+        with portal.get_db() as db:
+            db.execute("UPDATE students SET willing_to_advise = true WHERE id = %s", (self.ids["Ana"],))
+            db.execute("INSERT INTO completed_courses (student_id, course_code) VALUES (%s, 'CSC 510')",
+                       (self.ids["Ana"],))
+        self.add_advisor("Zoe", ["CSC 510"])
+        self.assertEqual(self.recommended(), ["Zoe"])
+
+    def test_advisors_not_taking_requests_are_left_out(self):
+        self.add_advisor("Lee", ["CSC 510"])
+        self.add_advisor("Dev", ["CSC 510"], willing=False)
+        self.add_advisor("Zoe", ["CSC 510"])
+        with portal.get_db() as db:
+            db.execute("UPDATE students SET pause_until = CURRENT_DATE + 30 WHERE id = %s", (self.ids["Lee"],))
+        self.assertEqual(self.recommended(), ["Zoe"])
+
+    def test_blocked_advisors_are_left_out_in_both_directions(self):
+        for name in ("Blocked", "Blocker", "Zoe"):
+            self.add_advisor(name, ["CSC 510"])
+        with portal.get_db() as db:
+            db.execute("INSERT INTO student_blocks (blocker_id, blocked_id) VALUES (%s, %s), (%s, %s)",
+                       (self.ids["Ana"], self.ids["Blocked"], self.ids["Blocker"], self.ids["Ana"]))
+        self.assertEqual(self.recommended(), ["Zoe"])
+
+    def test_results_carry_a_score_and_no_internal_fields(self):
+        self.add_advisor("Zoe", ["CSC 510"])
+        row = self.client.get("/api/recommendations").get_json()["students"][0]
+        self.assertTrue(0 <= row["score"] <= 1)
+        for internal in ("course_keys", "courses", "response_answered", "response_unanswered"):
+            self.assertNotIn(internal, row)
