@@ -59,7 +59,7 @@ Response:
 ```json
 {
   "students": [ ...your matches on this page... ],
-  "outside_filters": [ ...advisors outside your filters on this page... ],
+  "outside_filters": [ ...the best 15 advisors outside your filters... ],
   "total_matches": 4,
   "total_outside_filters": 1,
   "limit": 20,
@@ -67,9 +67,10 @@ Response:
 }
 ```
 
-Paging runs across both lists in order, so a page can end the matches and
-start the advisors outside the filters. Each advisor has the same fields as
-before, plus:
+`limit` and `offset` page through your matches only. The advisors outside your
+filters are the same on every page (the best 15, with the full count in
+`total_outside_filters`), so the page can show them in a row of their own.
+Each advisor has the same fields as before, plus:
 
 - `score`: the fit score from 0 to 1.
 - `match_reasons`: short labels such as `"Advises on interview prep"`,

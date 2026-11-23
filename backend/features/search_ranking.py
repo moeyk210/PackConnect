@@ -26,6 +26,9 @@ TEXT_FILTERS = ("program", "year", "skills", "advice_topics")
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
 
+# The most advisors sent for the "Outside your filters" row.
+OUTSIDE_LIMIT = 15
+
 # Result groups, in the order they are shown. Lower numbers come first.
 YOUR_MATCHES = 0
 OUTSIDE_CLOSE = 1          # Took the searched course (or no course was searched) but missed filters.
@@ -191,17 +194,19 @@ def page_settings(args):
 
 
 def results_page(results, limit, offset):
-    """Cut one page from the ordered results and split it into the two groups.
+    """Cut one page of matches and attach the near misses.
 
-    Paging runs across both groups in order, so a page can hold the last matches
-    and the first advisors outside the filters. Totals cover all pages.
+    Page numbers only move through "Your matches". The advisors outside the
+    filters come as their own short list (the best OUTSIDE_LIMIT of them), the
+    same on every page, so the page can show them in a row of their own.
     """
-    page = results[offset:offset + limit]
+    matches = [result.public for result in results if result.group == YOUR_MATCHES]
+    outside = [result.public for result in results if result.group != YOUR_MATCHES]
     return {
-        "students": [result.public for result in page if result.group == YOUR_MATCHES],
-        "outside_filters": [result.public for result in page if result.group != YOUR_MATCHES],
-        "total_matches": sum(result.group == YOUR_MATCHES for result in results),
-        "total_outside_filters": sum(result.group != YOUR_MATCHES for result in results),
+        "students": matches[offset:offset + limit],
+        "outside_filters": outside[:OUTSIDE_LIMIT],
+        "total_matches": len(matches),
+        "total_outside_filters": len(outside),
         "limit": limit,
         "offset": offset,
     }

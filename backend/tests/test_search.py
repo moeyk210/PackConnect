@@ -226,12 +226,12 @@ class RankedSearchTests(SearchFixture):
         data = self.response(course="MA 101")
         self.assertEqual((data["students"], data["outside_filters"]), ([], []))
 
-    def test_pages_are_stable_and_do_not_overlap(self):
+    def test_pages_move_through_matches_and_keep_near_misses_fixed(self):
         everyone = self.response(course="CSC 510")
-        full = self.names(everyone["students"] + everyone["outside_filters"])
-        pages = [self.response(course="CSC 510", limit=2, offset=offset) for offset in (0, 2, 4)]
-        paged = [name for page in pages for name in self.names(page["students"] + page["outside_filters"])]
-        self.assertEqual(paged, full)
+        pages = [self.response(course="CSC 510", limit=2, offset=offset) for offset in (0, 2)]
+        paged = [name for page in pages for name in self.names(page["students"])]
+        self.assertEqual(paged, self.names(everyone["students"]))
+        self.assertTrue(all(self.names(page["outside_filters"]) == ["Eli"] for page in pages))
         self.assertEqual((pages[0]["total_matches"], pages[0]["total_outside_filters"]), (4, 1))
 
     def test_invalid_paging_is_rejected(self):

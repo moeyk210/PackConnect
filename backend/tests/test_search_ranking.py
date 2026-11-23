@@ -198,28 +198,37 @@ class ResultsPageTests(unittest.TestCase):
         self.results += [search_ranking.RankedResult(group=1, public={"id": 4}),
                          search_ranking.RankedResult(group=2, public={"id": 5})]
 
-    def ids(self, page):
-        return [s["id"] for s in page["students"]] + [s["id"] for s in page["outside_filters"]]
+    def match_ids(self, page):
+        return [s["id"] for s in page["students"]]
 
     def test_page_splits_into_matches_and_outside_filters(self):
         page = search_ranking.results_page(self.results, 20, 0)
-        self.assertEqual([s["id"] for s in page["students"]], [1, 2, 3])
+        self.assertEqual(self.match_ids(page), [1, 2, 3])
         self.assertEqual([s["id"] for s in page["outside_filters"]], [4, 5])
         self.assertEqual((page["total_matches"], page["total_outside_filters"]), (3, 2))
 
-    def test_pages_do_not_overlap_or_skip_anyone(self):
-        pages = [search_ranking.results_page(self.results, 2, offset) for offset in (0, 2, 4)]
-        self.assertEqual([self.ids(page) for page in pages], [[1, 2], [3, 4], [5]])
+    def test_pages_move_through_matches_only_without_overlap(self):
+        pages = [search_ranking.results_page(self.results, 2, offset) for offset in (0, 2)]
+        self.assertEqual([self.match_ids(page) for page in pages], [[1, 2], [3]])
 
-    def test_totals_cover_all_pages(self):
-        page = search_ranking.results_page(self.results, 2, 4)
+    def test_outside_filters_are_the_same_on_every_page(self):
+        pages = [search_ranking.results_page(self.results, 2, offset) for offset in (0, 2, 99)]
+        self.assertTrue(all([s["id"] for s in page["outside_filters"]] == [4, 5] for page in pages))
+
+    def test_outside_filters_are_capped(self):
+        many = [search_ranking.RankedResult(group=1, public={"id": n}) for n in range(40)]
+        page = search_ranking.results_page(many, 20, 0)
+        self.assertEqual(len(page["outside_filters"]), search_ranking.OUTSIDE_LIMIT)
+        self.assertEqual(page["total_outside_filters"], 40)
+
+    def test_totals_and_settings_are_reported(self):
+        page = search_ranking.results_page(self.results, 2, 2)
         self.assertEqual((page["total_matches"], page["total_outside_filters"]), (3, 2))
-        self.assertEqual((page["limit"], page["offset"]), (2, 4))
+        self.assertEqual((page["limit"], page["offset"]), (2, 2))
 
-    def test_offset_past_the_end_gives_empty_lists(self):
+    def test_offset_past_the_end_gives_no_matches(self):
         page = search_ranking.results_page(self.results, 20, 99)
-        self.assertEqual((page["students"], page["outside_filters"]), ([], []))
-
+        self.assertEqual(page["students"], [])
 
 if __name__ == "__main__":
     unittest.main()
