@@ -1,5 +1,7 @@
 """Request expiration and contact rules shared by app routes and maintenance."""
 
+from core.realtime import publish
+
 
 def blocked(db, first, second):
     return bool(
@@ -19,12 +21,23 @@ def lock_students(db, *ids):
     ).fetchall()
 
 
+def publish_pair(db, first, second, actor, event, data):
+    # Blocked pairs never receive each other's events; only the actor is told.
+    recipients = [actor] if blocked(db, first, second) else [first, second]
+    publish(db, recipients, event, data)
+
+
 def notify(db, user_id, actor_id, request_id, kind, event_key):
-    db.execute(
+    # A blocked pair never notifies each other, in either direction.
+    if blocked(db, user_id, actor_id):
+        return
+    inserted = db.execute(
         """INSERT INTO notifications(user_id,actor_id,request_id,kind,event_key)
         VALUES (%s,%s,%s,%s,%s) ON CONFLICT(event_key) DO NOTHING""",
         (user_id, actor_id, request_id, kind, event_key),
-    )
+    ).rowcount
+    if inserted:
+        publish(db, [user_id], "notifications", {})
 
 
 def expire_requests(db, student_id=None, recipient_id=None):
@@ -50,6 +63,7 @@ def expire_requests(db, student_id=None, recipient_id=None):
             (*params, advisor["recipient_id"]),
         ).fetchall()
         for row in rows:
+            publish_pair(db, row["sender_id"], row["recipient_id"], None, "request", {"request_id": row["id"]})
             for user, actor in (
                 (row["sender_id"], row["recipient_id"]),
                 (row["recipient_id"], row["sender_id"]),

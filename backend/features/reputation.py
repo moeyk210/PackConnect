@@ -17,21 +17,41 @@ FIELDS = ("average_rating", "rating_count", "helpful_percent", "students_helped"
 PREFIX = "reputation_"
 
 
-def reputation_join(alias="s"):
+# With as_of=True, reputation_join() holds this many query placeholders, all for
+# the same cutoff time. Callers pass the cutoff that many times, before any later parameters.
+AS_OF_PARAMETER_COUNT = 3
+
+
+def reputation_join(alias="s", as_of=False):
+    """Join the reputation stats for each row of the given students alias.
+
+    With as_of=True the stats are worked out as they stood at a past cutoff
+    time (used by the ranking eval): only feedback given and requests sent
+    before the cutoff count, and a request counts as unanswered only if its
+    deadline had passed by then. The database does not record when a request
+    was answered, so a request sent before the cutoff counts with its final answer.
+    """
     # Callers supply a fixed SQL alias, never user input.
+    if as_of:
+        feedback_cutoff = "AND f.created_at < %s"
+        unanswered = "status IN ('expired', 'pending') AND expires_at <= %s"
+        request_cutoff = "AND created_at < %s"
+    else:
+        feedback_cutoff = ""
+        unanswered = "status = 'expired'\n                                OR (status = 'pending' AND expires_at <= CURRENT_TIMESTAMP)"
+        request_cutoff = ""
     return f"""LEFT JOIN LATERAL (
         SELECT count(f.id) AS rating_count,
                round(avg(f.rating)::numeric, 1)::float8 AS average_rating,
                round(100.0 * count(f.id) FILTER (WHERE f.helpful) / NULLIF(count(f.id), 0))::int AS helpful_percent
         FROM advice_feedback f JOIN advice_requests fr ON fr.id = f.request_id
-        WHERE fr.recipient_id = {alias}.id AND f.rater_id = fr.sender_id
+        WHERE fr.recipient_id = {alias}.id AND f.rater_id = fr.sender_id {feedback_cutoff}
     ) rep_f ON true
     LEFT JOIN LATERAL (
         SELECT count(DISTINCT sender_id) FILTER (WHERE status IN ('accepted', 'completed')) AS students_helped,
                count(*) FILTER (WHERE status IN ('accepted', 'declined', 'completed')) AS answered,
-               count(*) FILTER (WHERE status = 'expired'
-                                OR (status = 'pending' AND expires_at <= CURRENT_TIMESTAMP)) AS unanswered
-        FROM advice_requests WHERE recipient_id = {alias}.id
+               count(*) FILTER (WHERE {unanswered}) AS unanswered
+        FROM advice_requests WHERE recipient_id = {alias}.id {request_cutoff}
     ) rep_r ON true"""
 
 
@@ -41,6 +61,17 @@ def reputation_columns():
         rep_f.helpful_percent AS {PREFIX}helpful_percent,
         rep_r.students_helped AS {PREFIX}students_helped,
         round(100.0 * rep_r.answered / NULLIF(rep_r.answered + rep_r.unanswered, 0))::int AS {PREFIX}response_rate"""
+
+
+def response_count_columns():
+    """The raw counts behind response_rate, for ranking only.
+
+    Ranking needs the counts (not the rounded percentage) to tell a short
+    history from a long one. These columns are never part of the public stats.
+    Use together with reputation_join().
+    """
+    return """rep_r.answered AS response_answered,
+        rep_r.unanswered AS response_unanswered"""
 
 
 def with_reputation(row):

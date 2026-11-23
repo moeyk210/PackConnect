@@ -1,0 +1,112 @@
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: 1000px;
+  margin: 1.1rem auto 0;
+}
+
+.filter-pill-wrap {
+  position: relative;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 260px;
+  padding: 0.6rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.filter-pill:hover {
+  border-color: #9ca3af;
+}
+
+.filter-pill.active {
+  border-color: #cc0000;
+  background: #fff1f1;
+  color: #cc0000;
+}
+
+/* Long values are cut off with "…" so the row stays tidy. */
+.filter-pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-popover {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  z-index: 10;
+  width: 280px;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(17, 24, 39, 0.12);
+  text-align: left;
+}
+
+.filter-popover label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #374151;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.filter-popover input {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 9px;
+  font-size: 0.9rem;
+}
+
+.filter-popover input:focus {
+  outline: 2px solid #cc0000;
+  outline-offset: 1px;
+}
+
+.filter-popover-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.filter-apply {
+  padding: 0.5rem 0.9rem;
+  border: none;
+  border-radius: 8px;
+  background: #cc0000;
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.filter-apply:hover {
+  background: #a50000;
+}
+
+.filter-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #cc0000;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}

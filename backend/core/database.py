@@ -46,7 +46,16 @@ def connection_pool(database_url):
 def connect_database(database_url, schema=None):
     if not database_url:
         raise RuntimeError("Set SUPABASE_DB_URL in backend/.env; SQLite is no longer supported.")
+    # Callbacks queued during this checkout run only after the transaction
+    # commits; an exception rolls back and skips them.
+    after_commit = []
     with connection_pool(database_url).connection() as db:
         if schema:
             db.execute(sql.SQL("SET LOCAL search_path TO {}, public").format(sql.Identifier(schema)))
-        yield db
+        db.after_commit = after_commit
+        try:
+            yield db
+        finally:
+            db.after_commit = None  # pooled connections must not carry callbacks into the next checkout
+    for callback in after_commit:
+        callback()

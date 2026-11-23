@@ -9,14 +9,21 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from pathlib import Path
 from features.messaging import create_messaging_blueprint, initialize_messaging
 from core.database import connect_database
-from core.identity import registered_student_sql, session_student_id
+from core.realtime import disconnect_session, register_realtime, socketio
+from core.identity import create_auth_session, registered_student_sql, revoke_auth_session, session_student_id
 from core.courses import normalize_code
 from features.community import create_community_blueprint
 from features.meetings import create_meetings_blueprint
 from features.recovery import create_recovery_blueprint
+from features.typing import register_typing
 from features.feedback import create_feedback_blueprint
 from features.courses import create_courses_blueprint
 from features.reputation import create_reputation_blueprint, reputation_columns, reputation_join, with_reputation
+from features.advisor_candidates import NOT_BLOCKED_SQL, fetch_advisor_rows, same_subject_condition
+from features.recommendations import create_recommendations_blueprint
+from features.topic_embeddings import topic_embedding_value
+from core.embeddings import TopicEmbedder
+from features.search_ranking import TEXT_FILTERS, SearchFilters, page_settings, rank_search_results, results_page
 from features.lifecycle import lock_students
 from features.availability import availability_payload, workload_join, availability_columns, availability_status_sql
 
@@ -66,6 +73,8 @@ app.config.update(
 CORS(app)
 
 app.config["SUPABASE_DB_URL"] = os.getenv("SUPABASE_DB_URL")
+# Makes topic fingerprints for meaning-based matching. Tests swap in a stand-in.
+app.config.setdefault("TOPIC_EMBEDDER", TopicEmbedder())
 
 
 def get_db():
@@ -79,6 +88,9 @@ app.register_blueprint(create_recovery_blueprint(get_db))
 app.register_blueprint(create_feedback_blueprint(get_db))
 app.register_blueprint(create_reputation_blueprint(get_db))
 app.register_blueprint(create_courses_blueprint(get_db))
+app.register_blueprint(create_recommendations_blueprint(get_db))
+register_realtime(app, get_db)
+register_typing(get_db)
 
 
 def normalize_courses(courses):
@@ -256,11 +268,13 @@ def login():
         if account and db.execute("SELECT password_hash FROM accounts WHERE student_id=%s",(student_id,)).fetchone()["password_hash"] != account["password_hash"]:
             return jsonify(error="Your password changed during sign-in. Please try again."),401
         student = fetch_student(db, student_id)
+        session_id = create_auth_session(db, student_id) if student else None
     if student is None:
         return jsonify({"error": "This account has no student profile."}), 401
     session.clear()
     session.permanent = True
     session["student_id"] = student["id"]
+    session["session_id"] = session_id
     session["auth_version"] = version["session_version"]
     if auth_user_id:
         session["auth_user_id"] = auth_user_id
@@ -279,6 +293,13 @@ def current_user():
 
 @app.route("/api/auth/logout", methods=["POST"])
 def logout():
+    # Revoke server-side so a copied cookie stops working, and close this
+    # browser's sockets. Other signed-in devices are unaffected.
+    session_id = session.get("session_id")
+    if isinstance(session_id, str):
+        with get_db() as db:
+            revoke_auth_session(db, session_id)
+            disconnect_session(db, session_id)
     session.clear()
     return jsonify({"status": "ok"})
 
@@ -383,67 +404,48 @@ def suggest_courses():
 @app.route("/api/students/search")
 def search_students():
     course = normalize_code(request.args.get("course", ""))
-    program = request.args.get("program", "").strip()
-    year = request.args.get("year", "").strip()
-    skills = request.args.get("skills", "").strip()
-    advice_topics = request.args.get("advice_topics", "").strip()
+    text_filters = {name: request.args.get(name, "").strip() for name in TEXT_FILTERS}
     available = request.args.get("available", "true").strip().lower()
+    try:
+        limit, offset = page_settings(request.args)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    filters = SearchFilters(
+        course_key=course_key(course),
+        text={name: value for name, value in text_filters.items() if value},
+        include_unrated=request.args.get("include_unrated", "true").strip().lower() != "false",
+    )
 
-    if not any((course, program, year, skills, advice_topics)):
-        return jsonify({"students": []})
+    if not filters.course_key and not filters.text:
+        return jsonify(results_page([], limit, offset))
 
+    # The database only narrows the candidates; search_ranking decides who is a
+    # match, who is outside the filters, and the order. Text filters are checked
+    # there too, so near misses can still be shown below the matches.
     # Include both local accounts and confirmed Supabase registrations.
     conditions = [registered_student_sql()]
     parameters = []
     viewer = session.get("student_id")
     if viewer:
-        conditions.append("NOT EXISTS (SELECT 1 FROM student_blocks b WHERE (b.blocker_id=%s AND b.blocked_id=s.id) OR (b.blocker_id=s.id AND b.blocked_id=%s))")
-        parameters.extend([viewer,viewer])
+        conditions.append(NOT_BLOCKED_SQL)
+        parameters.extend([viewer, viewer])
 
-    if course:
-        conditions.append("""
-            EXISTS (
-                SELECT 1
-                FROM completed_courses c
-                WHERE c.student_id = s.id
-                  AND regexp_replace(UPPER(c.course_code), '[[:space:]-]+', '', 'g') = %s
-            )
-        """)
-        parameters.append(course_key(course))
+    if filters.course_key:
+        # Advisors who took the searched course or another course in its subject.
+        subject_sql, subject_parameter = same_subject_condition(filters.course_key)
+        conditions.append(subject_sql)
+        parameters.append(subject_parameter)
 
     if available != "false":
         conditions.append(f"({availability_status_sql()}) = 'available'")
 
-    for column, value in (
-        ("s.program", program),
-        ("s.year", year),
-        ("s.skills", skills),
-        ("s.advice_topics", advice_topics),
-    ):
-        if value:
-            conditions.append(f"LOWER(COALESCE({column}, '')) LIKE %s")
-            parameters.append(f"%{value.lower()}%")
-
-    where_clause = " AND ".join(conditions) if conditions else "1 = 1"
-
+    # The searched topic's fingerprint, so topics can match by meaning too.
+    topic_vector = topic_embedding_value(app.config["TOPIC_EMBEDDER"], filters.text.get("advice_topics"))
     with get_db() as db:
-        rows = db.execute(f"""
-            SELECT DISTINCT
-                s.id,
-                s.name,
-                s.program,
-                s.year,
-                s.skills,
-                s.advice_topics,
-                s.willing_to_advise, {availability_columns()}, {reputation_columns()}
-            FROM students s {workload_join()} {reputation_join()}
-            WHERE {where_clause}
-            ORDER BY s.name
-        """, parameters).fetchall()
+        rows = fetch_advisor_rows(db, conditions, parameters, topic_vector=topic_vector)
 
-    return jsonify({
-        "students": [with_reputation(row) for row in rows]
-    })
+    results = rank_search_results(rows, filters)
+    return jsonify(results_page(results, limit, offset))
 
 
 @app.route("/api/students/<int:student_id>")
@@ -480,6 +482,9 @@ def update_student(student_id):
             "error": "Name, program, and year are required."
         }), 400
 
+    # Worked out before the database transaction so the model never holds row locks.
+    topic_embedding = topic_embedding_value(app.config["TOPIC_EMBEDDER"], payload["advice_topics"])
+
     with get_db() as db:
         existing_student = db.execute("""
             SELECT id, max_open_requests, pause_until
@@ -501,7 +506,8 @@ def update_student(student_id):
                 advice_topics = %s,
                 willing_to_advise = %s,
                 max_open_requests = %s,
-                pause_until = %s
+                pause_until = %s,
+                topic_embedding = %s::extensions.vector
             WHERE id = %s
         """, (
             payload["name"],
@@ -514,6 +520,7 @@ def update_student(student_id):
             payload["willing_to_advise"],
             payload.get("max_open_requests", existing_student["max_open_requests"]),
             payload.get("pause_until", existing_student["pause_until"]),
+            topic_embedding,
             student_id,
         ))
 
@@ -531,4 +538,7 @@ def send_message(student_id):
 
 if __name__ == "__main__":
     initialize_database()
-    app.run(debug=True, port=5000)
+    # socketio.run wraps the Werkzeug development server and adds WebSocket
+    # support. Flask-SocketIO refuses Werkzeug when stdin is not a terminal
+    # (IDE run buttons, background shells); this block is development-only.
+    socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True)

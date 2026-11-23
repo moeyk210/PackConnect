@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import App from './App'
 import RegistrationForm from './RegistrationForm'
 import PasswordRecovery from './PasswordRecovery'
+import RealtimeProvider from './RealtimeProvider'
 import './AuthShell.css'
 
 const pages = {
@@ -192,12 +193,14 @@ export default function AuthShell() {
             {error}
           </div>
         )}
-        <App
-          user={user}
-          onLogout={signOut}
-          route={route}
-          onUserUpdated={setUser}
-        />
+        <RealtimeProvider key={user.id}>
+          <App
+            user={user}
+            onLogout={signOut}
+            route={route}
+            onUserUpdated={setUser}
+          />
+        </RealtimeProvider>
       </>
     )
 
