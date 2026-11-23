@@ -12,6 +12,7 @@ import {
 import CourseAutocomplete from './CourseAutocomplete'
 import { availabilityLabel, capacityLabel } from './advisorAvailability'
 import ReputationBadges from './ReputationBadges'
+import StudentCard from './StudentCard'
 
 const API_URL = ''
 
@@ -803,47 +804,7 @@ function App({ user, onLogout, route, onUserUpdated }) {
             ) : (
               <div className="student-grid">
                 {students.map((student) => (
-                  <article className="student-card" key={student.id}>
-                    <div className="avatar">
-                      {student.name
-                        ?.split(' ')
-                        .map((part) => part[0])
-                        .slice(0, 2)
-                        .join('')}
-                    </div>
-
-                    <h4>{student.name}</h4>
-
-                    <p className="student-program">
-                      {student.program || 'NC State Student'}
-                    </p>
-
-                    {student.year && (
-                      <p className="student-year">{student.year}</p>
-                    )}
-
-                    {student.advice_topics && (
-                      <p className="student-year">
-                        Can help with {student.advice_topics}
-                      </p>
-                    )}
-
-                    <span
-                      className="available-badge"
-                      data-availability={student.availability_status}
-                    >
-                      {availabilityLabel(student)}
-                    </span>
-                    <p className="profile-note">{capacityLabel(student)}</p>
-                    <ReputationBadges reputation={student.reputation} />
-
-                    <a
-                      className="profile-button peer-profile-link"
-                      href={`#/app/students/${student.id}`}
-                    >
-                      View Profile →
-                    </a>
-                  </article>
+                  <StudentCard key={student.id} student={student} />
                 ))}
               </div>
             )}
