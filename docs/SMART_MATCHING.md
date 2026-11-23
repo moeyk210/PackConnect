@@ -20,8 +20,9 @@ Each advisor gets a score from 0 to 1, a weighted average of four factors
   few imaginary typical results (7.0/10 rating, 80% response rate), and real
   results gradually outweigh them. One 10/10 rating does not beat twenty 9s, and
   advisors with no reviews get the starting value instead of zero.
-- Topic words ignore capital letters, filler words, and simple plural endings,
-  so "interviews" matches "interview".
+- Topics match by shared words and by meaning, whichever is higher (see
+  "Meaning-based topic matching" below). Shared words ignore capital letters,
+  filler words, and simple plural endings, so "interviews" matches "interview".
 - All weights and starting values are in one block at the top of `ranking.py`.
 
 ## Matches and "Outside your filters"
@@ -29,7 +30,9 @@ Each advisor gets a score from 0 to 1, a weighted average of four factors
 `backend/features/search_ranking.py` puts each advisor in a group:
 
 1. **Your matches:** took the searched course and meets every filter
-   (program, year, skills, advice topics).
+   (program, year, skills, advice topics). A filter is met when the profile
+   contains the text; the advice topics filter is also met when the topics are
+   close enough in meaning.
 2. **Outside your filters:** near misses, so a search is never a dead end.
    - First, advisors who took the searched course but miss some filters.
    - Then, advisors who took another course in the same subject (for example
@@ -39,6 +42,59 @@ Advisors with no course in the searched subject are never shown. Without a
 course, matches meet every filter and near misses meet at least one.
 Inside each group, fewer missed filters come first, then higher scores, then
 name and id, so the order is always the same for the same data.
+
+## Meaning-based topic matching
+
+Shared words miss different wording for the same idea: "job hunting" and
+"Resume reviews, career fairs" share no words. So each student's advice topics
+also get a fingerprint (an embedding: 384 numbers from the small
+`BAAI/bge-small-en-v1.5` model) that captures their meaning.
+
+- The model runs on the Flask server through `fastembed`
+  (`backend/core/embeddings.py`). No outside service is called, and it is
+  downloaded (about 65 MB) the first time it is needed.
+- Fingerprints are stored in `students.topic_embedding` using pgvector, and are
+  updated whenever a profile is saved. If the model is unavailable, the profile
+  still saves and matching falls back to shared words.
+- At search time the typed topic is fingerprinted once, and pgvector works out
+  how close each advisor's topics are. Raw closeness bunches between about 0.55
+  (unrelated) and 0.80 (the same idea), so it is stretched to 0-1 using those
+  two points (`MEANING_NO_MATCH` and `MEANING_STRONG_MATCH` in `ranking.py`).
+- The topic factor is the higher of the shared-words match and the meaning
+  match. The topics filter counts as met at a stretched meaning match of 0.5.
+
+### Topic matching eval
+
+`backend/scripts/topic_match_cases.py` holds 30 made-up ways a student might
+describe a need, each paired with the one fitting advisor out of 12 realistic
+topic lists. Most use different words from the right advisor's topics; five use
+the exact words. `backend/scripts/topic_match_eval.py` counts how often the
+right advisor is the clear top match:
+
+```powershell
+.\.venv\Scripts\python.exe backend/scripts/topic_match_eval.py
+```
+
+| Method | Right advisor is the clear top match |
+| --- | --- |
+| Shared words only | 46.7% (14 of 30) |
+| Shared words and meaning | 86.7% (26 of 30) |
+
+The stretch points were chosen before this test set was written and were not
+adjusted to fit it. It is a small hand-written set, so treat the numbers as a
+demonstration rather than a measurement of real students.
+
+### Setting up a database
+
+1. Apply migrations (`python backend/scripts/migrate.py`). This enables
+   pgvector in the `extensions` schema and adds `students.topic_embedding`.
+   If pgvector was already enabled in a different schema, move it to
+   `extensions` first.
+2. Fill in fingerprints for existing profiles:
+   `python backend/scripts/backfill_topic_embeddings.py --database-url URL`.
+   It refuses non-local databases unless `--allow-remote` is given.
+
+Local test databases need pgvector too; see [Supabase setup](SUPABASE.md).
 
 ## API
 
@@ -140,6 +196,9 @@ Limits:
   request sent before a case counts with its final answer.
 - Availability history is not stored, so the eval ignores availability.
 - Profiles and courses are today's, not as they were at the time.
+- The simulated students describe needs with the advisors' exact topic words, so
+  this eval uses shared-word matching only; meaning-based matching is measured
+  separately by the topic matching eval above.
 
 ## Verification
 
@@ -148,6 +207,8 @@ Limits:
 .\.venv\Scripts\python.exe -m unittest discover -s backend -p "test_search_ranking.py" -v
 ```
 
-These need no database. `backend/tests/test_search.py` and
+These need no database, and neither does `test_topic_match_eval.py` (it uses a
+stand-in for the model; set `RUN_EMBEDDING_MODEL=1` to also run the one test that
+loads the real model). `backend/tests/test_search.py` and
 `backend/tests/test_recommendations.py` check the rules end to end and need
 `TEST_DATABASE_URL`, as described in [Supabase setup](SUPABASE.md).
