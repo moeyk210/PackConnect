@@ -13,6 +13,7 @@ original Project 2 team is not tracked here.
 | Tool | Model / version | Used by | Where it runs |
 |---|---|---|---|
 | Claude Code | Claude Opus 5.5 | Moe | VS Code extension |
+| Claude Code | Claude Opus 5.5 | Ethan | VS Code extension |
 | _TODO_ | | | |
 
 ## What we use AI for
@@ -47,3 +48,4 @@ original Project 2 team is not tracked here.
 | # | Artifact | Author | Date |
 |---|---|---|---|
 | 01 | [Backend file reorganization](artifacts/01-backend-reorganization.md) | Moe Ko | 2026-11-10 |
+| 05 | [Real-time messaging (issue #5)](artifacts/05-real-time-messaging.md) | Ethan Goodman | 2026-11-18 |
