@@ -18,7 +18,8 @@
   cursor: pointer;
 }
 
-.pagination button:hover:not(:disabled) {
+/* The current page keeps its own colors, so its number stays readable on hover. */
+.pagination button:hover:not(:disabled):not([aria-current='page']) {
   border-color: #cc0000;
   color: #cc0000;
 }
