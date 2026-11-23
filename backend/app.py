@@ -14,7 +14,8 @@ from core.identity import create_auth_session, registered_student_sql, revoke_au
 from features.community import create_community_blueprint
 from features.meetings import create_meetings_blueprint
 from features.recovery import create_recovery_blueprint
-from features.typing import register_typing
+from features.feedback import create_feedback_blueprint
+from features.reputation import create_reputation_blueprint, reputation_columns, reputation_join, with_reputation
 from features.lifecycle import lock_students
 from features.availability import availability_payload, workload_join, availability_columns, availability_status_sql
 
@@ -74,8 +75,8 @@ app.register_blueprint(create_messaging_blueprint(get_db))
 app.register_blueprint(create_community_blueprint(get_db))
 app.register_blueprint(create_meetings_blueprint(get_db))
 app.register_blueprint(create_recovery_blueprint(get_db))
-register_realtime(app, get_db)
-register_typing(get_db)
+app.register_blueprint(create_feedback_blueprint(get_db))
+app.register_blueprint(create_reputation_blueprint(get_db))
 
 
 def normalize_courses(courses):
@@ -132,8 +133,9 @@ def fetch_student(db, student_id):
                EXISTS(SELECT 1 FROM staff_members WHERE student_id=s.id) AS is_moderator,
                EXISTS(SELECT 1 FROM student_blocks WHERE blocker_id=%s AND blocked_id=s.id) AS blocked_by_me,
                NOT EXISTS(SELECT 1 FROM student_blocks WHERE (blocker_id=%s AND blocked_id=s.id)
-                   OR (blocker_id=s.id AND blocked_id=%s)) AS contact_allowed
-        FROM students s {workload_join()}
+                   OR (blocker_id=s.id AND blocked_id=%s)) AS contact_allowed,
+               {reputation_columns()}
+        FROM students s {workload_join()} {reputation_join()}
         WHERE s.id = %s
     """, (viewer, viewer, viewer, student_id)).fetchone()
 
@@ -154,7 +156,7 @@ def fetch_student(db, student_id):
         ORDER BY course_code
     """, (student_id,)).fetchall()
 
-    profile = dict(student)
+    profile = with_reputation(student)
     profile["completed_courses"] = [
         row["course_code"] for row in completed_courses
     ]
@@ -429,14 +431,14 @@ def search_students():
                 s.year,
                 s.skills,
                 s.advice_topics,
-                s.willing_to_advise, {availability_columns()}
-            FROM students s {workload_join()}
+                s.willing_to_advise, {availability_columns()}, {reputation_columns()}
+            FROM students s {workload_join()} {reputation_join()}
             WHERE {where_clause}
             ORDER BY s.name
         """, parameters).fetchall()
 
     return jsonify({
-        "students": [dict(row) for row in rows]
+        "students": [with_reputation(row) for row in rows]
     })
 
 
