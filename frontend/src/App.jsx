@@ -12,6 +12,8 @@ import {
 import CourseAutocomplete from './CourseAutocomplete'
 import { availabilityLabel, capacityLabel } from './advisorAvailability'
 import ReputationBadges from './ReputationBadges'
+import CoursePage from './CoursePage'
+import { courseHref } from './courseLinks'
 import FilterBar from './FilterBar'
 import SearchResults from './SearchResults'
 import { emptyResults, readSearchResults } from './searchResponse'
@@ -53,8 +55,18 @@ function textToCourses(value) {
     .filter(Boolean)
 }
 
+function decodeCourseCode(segment) {
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    return segment
+  }
+}
+
 function App({ user, onLogout, route, onUserUpdated }) {
   const isSearchPage = route === 'app'
+  const courseMatch = route.match(/^app\/courses\/([^/]+)$/)
+  const coursePageCode = courseMatch ? decodeCourseCode(courseMatch[1]) : null
   const profileId = /^app\/students\/[1-9]\d*$/.test(route)
     ? Number(route.split('/')[2])
     : ['app/profile', 'app/profile/edit'].includes(route)
@@ -63,6 +75,8 @@ function App({ user, onLogout, route, onUserUpdated }) {
   const isEditing = route === 'app/profile/edit'
   const [menuOpen, setMenuOpen] = useState(false)
   const [course, setCourse] = useState('CSC 510')
+  // The course of the last search, so the results can link to its course page.
+  const [searchedCourse, setSearchedCourse] = useState('CSC 510')
   const [filters, setFilters] = useState(emptyFilters)
   const [results, setResults] = useState(emptyResults)
   const [selectedStudent, setSelectedStudent] = useState(null)
@@ -135,6 +149,7 @@ function App({ user, onLogout, route, onUserUpdated }) {
     setError('')
     setNotice('')
     setSelectedStudent(null)
+    setSearchedCourse(searchCourse.trim())
 
     try {
       const response = await fetch(
@@ -509,6 +524,9 @@ function App({ user, onLogout, route, onUserUpdated }) {
           />
         )}
         {chatId && <Conversation key={chatId} requestId={chatId} user={user} />}
+        {coursePageCode && (
+          <CoursePage key={coursePageCode} code={coursePageCode} />
+        )}
 
         {isEditing && selectedStudent?.id === user.id && (
           <section className="profile-editor">
@@ -575,30 +593,37 @@ function App({ user, onLogout, route, onUserUpdated }) {
                   />
                 </label>
 
-                <label>
-                  Completed courses
-                  <input
+                <div className="course-field">
+                  <label htmlFor="profile-completed-courses">
+                    Completed courses
+                  </label>
+                  <CourseAutocomplete
+                    inputId="profile-completed-courses"
+                    label="Completed courses"
+                    multiple
                     value={profileForm.completed_courses}
-                    onChange={(event) =>
-                      updateProfileField(
-                        'completed_courses',
-                        event.target.value,
-                      )
+                    onChange={(value) =>
+                      updateProfileField('completed_courses', value)
                     }
                     placeholder="CSC 510, CSC 540"
                   />
-                </label>
+                </div>
 
-                <label>
-                  Current courses
-                  <input
+                <div className="course-field">
+                  <label htmlFor="profile-current-courses">
+                    Current courses
+                  </label>
+                  <CourseAutocomplete
+                    inputId="profile-current-courses"
+                    label="Current courses"
+                    multiple
                     value={profileForm.current_courses}
-                    onChange={(event) =>
-                      updateProfileField('current_courses', event.target.value)
+                    onChange={(value) =>
+                      updateProfileField('current_courses', value)
                     }
                     placeholder="CSC 515, CSC 522"
                   />
-                </label>
+                </div>
 
                 <label>
                   Interests
@@ -730,6 +755,7 @@ function App({ user, onLogout, route, onUserUpdated }) {
           <SearchResults
             results={results}
             loading={loading}
+            course={searchedCourse}
             onPageChange={changePage}
           />
         )}
@@ -742,6 +768,7 @@ function App({ user, onLogout, route, onUserUpdated }) {
         {!isSearchPage &&
           !profileId &&
           !chatId &&
+          !coursePageCode &&
           ![
             'app/requests',
             'app/requests/outgoing',
@@ -807,7 +834,9 @@ function App({ user, onLogout, route, onUserUpdated }) {
                   <div className="profile-tags">
                     <strong>Completed: </strong>
                     {selectedStudent.completed_courses.map((courseCode) => (
-                      <span key={courseCode}>{courseCode}</span>
+                      <span key={courseCode}>
+                        <a href={courseHref(courseCode)}>{courseCode}</a>
+                      </span>
                     ))}
                   </div>
                 )}
@@ -816,7 +845,9 @@ function App({ user, onLogout, route, onUserUpdated }) {
                   <div className="profile-tags">
                     <strong>Current: </strong>
                     {selectedStudent.current_courses.map((courseCode) => (
-                      <span key={courseCode}>{courseCode}</span>
+                      <span key={courseCode}>
+                        <a href={courseHref(courseCode)}>{courseCode}</a>
+                      </span>
                     ))}
                   </div>
                 )}

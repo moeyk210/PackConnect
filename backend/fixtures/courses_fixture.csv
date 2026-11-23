@@ -1,0 +1,9 @@
+code,title,department,description
+CSC 510,Software Engineering,Computer Science,Fixture description
+csc540, Database Management Concepts ,Computer Science,
+ENG 101,Academic Writing,English,
+CSC 510,Duplicate code,Computer Science,
+BADCODE,Not a course code,Computer Science,
+MA 141,,Mathematics,
+CSC 515,Too few columns
+PY 205,Too many columns,Physics,x,y

@@ -5,13 +5,27 @@ from functools import wraps
 from flask import Blueprint, jsonify, request, session
 from core.identity import session_student_id
 
-FEEDBACK_FIELDS = "id, request_id, rating, helpful, comment, created_at"
+FEEDBACK_FIELDS = "id, request_id, rating, helpful, comment, workload_rating, difficulty_rating, created_at"
 # Only connections that actually happened can be rated. Requests closed by a
 # block are excluded so feedback cannot be used for retaliation.
 RATEABLE_STATUSES = ("accepted", "completed")
 MIN_RATING, MAX_RATING = 1, 10
 MAX_COMMENT_LENGTH = 500
 
+# Optional ratings of the course itself, shown only as averages on course pages.
+MIN_COURSE_RATING, MAX_COURSE_RATING = 1, 5
+
+def course_ratings(data):
+    """Return (workload, difficulty) from a request body: each None or a whole 1-5."""
+    ratings = []
+    for field, label in (("workload_rating", "Workload"), ("difficulty_rating", "Difficulty")):
+        value = data.get(field)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)
+                                  or not MIN_COURSE_RATING <= value <= MAX_COURSE_RATING):
+            raise ValueError(f"{label} rating must be a whole number from "
+                             f"{MIN_COURSE_RATING} to {MAX_COURSE_RATING}, or left out.")
+        ratings.append(value)
+    return tuple(ratings)
 
 def feedback_payload(data):
     """Return (rating, helpful, comment) from a request body, or raise ValueError."""
@@ -93,18 +107,21 @@ def create_feedback_blueprint(get_db):
             return jsonify(error="Feedback opens once the request has been accepted."), 403
         if not both_have_messaged(db, advice):
             return jsonify(error="Feedback opens after you have both sent a message."), 403
+        body = request.get_json(silent=True)
         try:
-            rating, helpful, comment = feedback_payload(request.get_json(silent=True))
+            rating, helpful, comment = feedback_payload(body)
+            workload, difficulty = course_ratings(body)
         except ValueError as error:
             return jsonify(error=str(error)), 400
         # The unique (request_id, rater_id) constraint decides races: of two
         # simultaneous submissions, exactly one inserts and the other gets 409.
         row = db.execute(
-            f"""INSERT INTO advice_feedback (request_id, rater_id, rating, helpful, comment)
-            VALUES (%s, %s, %s, %s, %s)
+            f"""INSERT INTO advice_feedback
+                (request_id, rater_id, rating, helpful, comment, workload_rating, difficulty_rating)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (request_id, rater_id) DO NOTHING
             RETURNING {FEEDBACK_FIELDS}""",
-            (request_id, user, rating, helpful, comment),
+            (request_id, user, rating, helpful, comment, workload, difficulty),
         ).fetchone()
         if row is None:
             return jsonify(error="You have already given feedback for this conversation."), 409

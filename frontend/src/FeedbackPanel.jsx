@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
   MAX_COMMENT_LENGTH,
+  MAX_COURSE_RATING,
   MAX_RATING,
+  MIN_COURSE_RATING,
   MIN_RATING,
   getFeedback,
   submitFeedback,
@@ -15,8 +17,42 @@ const RATINGS = Array.from(
   (_, index) => MIN_RATING + index,
 )
 
+const COURSE_RATINGS = Array.from(
+  { length: MAX_COURSE_RATING - MIN_COURSE_RATING + 1 },
+  (_, index) => MIN_COURSE_RATING + index,
+)
+
+// An optional 1-5 question about the course. Choosing the same number again clears the answer.
+function CourseRating({ id, label, hint, value, onChange }) {
+  return (
+    <div className="feedback-question">
+      <span id={id}>{label}</span>
+      <div className="feedback-options" role="group" aria-labelledby={id}>
+        {COURSE_RATINGS.map((rating) => (
+          <button
+            type="button"
+            key={rating}
+            aria-pressed={value === rating}
+            aria-label={`${rating} out of ${MAX_COURSE_RATING}`}
+            onClick={() => onChange(value === rating ? null : rating)}
+          >
+            {rating}
+          </button>
+        ))}
+      </div>
+      <span className="profile-note">{hint}</span>
+    </div>
+  )
+}
+
 // Read-only record of the feedback the signed-in person gave.
 export function FeedbackSummary({ feedback }) {
+  const courseRatings = [
+    feedback.workload_rating != null &&
+      `Workload ${feedback.workload_rating}/${MAX_COURSE_RATING}`,
+    feedback.difficulty_rating != null &&
+      `Difficulty ${feedback.difficulty_rating}/${MAX_COURSE_RATING}`,
+  ].filter(Boolean)
   return (
     <section className="feedback-panel" aria-labelledby="feedback-heading">
       <h3 id="feedback-heading">Your feedback</h3>
@@ -30,6 +66,9 @@ export function FeedbackSummary({ feedback }) {
           {feedback.helpful ? 'Helpful' : 'Not helpful'}
         </span>
       </p>
+      {courseRatings.length > 0 && (
+        <p className="profile-note">{courseRatings.join(' · ')}</p>
+      )}
       {feedback.comment && (
         <p className="conversation-context">{feedback.comment}</p>
       )}
@@ -43,6 +82,7 @@ export function FeedbackSummary({ feedback }) {
 export default function FeedbackPanel({
   requestId,
   peerName,
+  courseCode,
   feedback,
   onSubmitted,
 }) {
@@ -50,6 +90,8 @@ export default function FeedbackPanel({
     rating: null,
     helpful: null,
     comment: '',
+    workload_rating: null,
+    difficulty_rating: null,
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -125,6 +167,29 @@ export default function FeedbackPanel({
               ))}
             </div>
           </div>
+          <p className="profile-note">
+            Optional: rate {courseCode || 'the course'} itself. Averages appear
+            on the course page once at least 3 students who took it have rated
+            it.
+          </p>
+          <CourseRating
+            id="workload-label"
+            label="Course workload (optional)"
+            hint="1 = light, 5 = very heavy"
+            value={draft.workload_rating}
+            onChange={(workload_rating) =>
+              setDraft({ ...draft, workload_rating })
+            }
+          />
+          <CourseRating
+            id="difficulty-label"
+            label="Course difficulty (optional)"
+            hint="1 = easy, 5 = very hard"
+            value={draft.difficulty_rating}
+            onChange={(difficulty_rating) =>
+              setDraft({ ...draft, difficulty_rating })
+            }
+          />
           <label>
             Comment (optional)
             <textarea
@@ -187,6 +252,7 @@ export function ConversationFeedback({
     <FeedbackPanel
       requestId={requestId}
       peerName={peerName}
+      courseCode={record.course_code}
       feedback={state.feedback}
       onSubmitted={(feedback) => setState({ feedback, can_rate: false })}
     />

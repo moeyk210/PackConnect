@@ -10,6 +10,10 @@
   box-sizing: border-box;
 }
 
+.course-input-wrap {
+  position: relative;
+}
+
 .course-hint {
   display: block;
   margin-top: 6px;
@@ -19,7 +23,7 @@
 
 .course-suggestions {
   position: absolute;
-  top: 56px;
+  top: calc(100% + 4px);
   left: 0;
   right: 0;
   z-index: 20;
@@ -49,8 +53,41 @@
   color: #a50000;
 }
 
+.course-code {
+  font-weight: 600;
+}
+
+.course-title {
+  font-size: 0.875rem;
+  color: #4b5563;
+}
+
+.course-suggestions [role='option']:hover .course-title,
+.course-suggestions [aria-selected='true'] .course-title {
+  color: inherit;
+}
+
 .course-suggestions p {
   margin: 0;
   padding: 12px 16px;
   font-size: 0.875rem;
+}
+
+/* Announced by screen readers, never shown. */
+.course-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Label above a course list field in the profile editor. */
+.course-field > label {
+  display: block;
+  margin-bottom: 6px;
 }

@@ -1,14 +1,21 @@
 import OutsideFilters from './OutsideFilters'
 import Pagination from './Pagination'
 import StudentCard from './StudentCard'
+import { courseHref } from './courseLinks'
 import './SearchResults.css'
 
 const studentCount = (count) => `${count} student${count === 1 ? '' : 's'}`
 
 // The ranked search results: "Your matches" (best fit first, with the top one
 // highlighted on the first page) and their page numbers, then a fixed
-// "Outside your filters" row that stays the same on every page.
-export default function SearchResults({ results, loading, onPageChange }) {
+// "Outside your filters" row that stays the same on every page. When a course
+// was searched, the heading links to that course's page.
+export default function SearchResults({
+  results,
+  loading,
+  course,
+  onPageChange,
+}) {
   const { matches, outside, totalMatches, limit, offset } = results
   const nothingFound = matches.length === 0 && outside.length === 0
   const [topMatch, ...otherMatches] =
@@ -20,6 +27,13 @@ export default function SearchResults({ results, loading, onPageChange }) {
         <div>
           <h3>Students who can help</h3>
           <p>Connect with peers who have experience in your course.</p>
+          {course && (
+            <p>
+              <a href={courseHref(course)}>
+                About {course}: workload, difficulty and advisors
+              </a>
+            </p>
+          )}
         </div>
         <span className="result-count">{studentCount(totalMatches)}</span>
       </div>

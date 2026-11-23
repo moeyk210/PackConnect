@@ -11,11 +11,13 @@ from features.messaging import create_messaging_blueprint, initialize_messaging
 from core.database import connect_database
 from core.realtime import disconnect_session, register_realtime, socketio
 from core.identity import create_auth_session, registered_student_sql, revoke_auth_session, session_student_id
+from core.courses import normalize_code
 from features.community import create_community_blueprint
 from features.meetings import create_meetings_blueprint
 from features.recovery import create_recovery_blueprint
 from features.typing import register_typing
 from features.feedback import create_feedback_blueprint
+from features.courses import create_courses_blueprint
 from features.reputation import create_reputation_blueprint, reputation_columns, reputation_join, with_reputation
 from features.advisor_candidates import NOT_BLOCKED_SQL, fetch_advisor_rows, same_subject_condition
 from features.recommendations import create_recommendations_blueprint
@@ -85,6 +87,7 @@ app.register_blueprint(create_meetings_blueprint(get_db))
 app.register_blueprint(create_recovery_blueprint(get_db))
 app.register_blueprint(create_feedback_blueprint(get_db))
 app.register_blueprint(create_reputation_blueprint(get_db))
+app.register_blueprint(create_courses_blueprint(get_db))
 app.register_blueprint(create_recommendations_blueprint(get_db))
 register_realtime(app, get_db)
 register_typing(get_db)
@@ -98,7 +101,7 @@ def normalize_courses(courses):
     seen = set()
 
     for course in courses:
-        course_code = course.strip().upper()
+        course_code = normalize_code(course)
         if course_code and course_code not in seen:
             normalized.append(course_code)
             seen.add(course_code)
@@ -330,7 +333,7 @@ def register():
             or any(not isinstance(course, str) or not course.strip()
                    or len(course.strip()) > 30 for course in courses)):
         return jsonify({"error": "Provide up to 50 completed course codes, each at most 30 characters."}), 400
-    courses = sorted({course.strip().upper() for course in courses})
+    courses = sorted({normalize_code(course) for course in courses})
     try:
         advising = {"max_open_requests": 5, "pause_until": None, **availability_payload(data)}
     except ValueError as error:
@@ -372,24 +375,35 @@ def course_key(value):
 
 @app.route("/api/courses")
 def suggest_courses():
-    query = course_key(request.args.get("q", ""))
-    if not query or len(query) > 30:
+    """Catalog autocomplete: up to 10 courses whose code starts with, or whose
+    title contains, the query. Spaces, hyphens and case are ignored in codes."""
+    text = re.sub(r"\s+", " ", request.args.get("q", "")).strip()
+    key = course_key(text)
+    if not key or len(text) > 100:
         return jsonify({"courses": []})
     with get_db() as db:
-        rows = db.execute(f"""
-            SELECT DISTINCT regexp_replace(UPPER(c.course_code), '[[:space:]-]+', '', 'g') AS code
-            FROM completed_courses c
-            JOIN students s ON s.id = c.student_id
-            WHERE {registered_student_sql()}
-              AND starts_with(regexp_replace(UPPER(c.course_code), '[[:space:]-]+', '', 'g'), %s)
-            ORDER BY code LIMIT 10
-        """, (query,)).fetchall()
-    return jsonify({"courses": [re.sub(r"^([A-Z]+)(\d)", r"\1 \2", row["code"]) for row in rows]})
+        rows = db.execute("""
+            SELECT c.code, c.title
+            FROM (SELECT code, title,
+                        regexp_replace(upper(code), '[[:space:]-]+', '', 'g') AS code_key,
+                        regexp_replace(upper(code), '^[[:alpha:]]+[[:space:]-]*', '') AS number_key
+                    FROM courses) AS c
+            WHERE starts_with(c.code_key, %s)
+                OR starts_with(c.number_key, %s)
+                OR position(lower(%s) in lower(c.title)) > 0
+            ORDER BY (c.code_key = %s) DESC,
+                    starts_with(c.code_key, %s) DESC,
+                    starts_with(c.number_key, %s) DESC,
+                    starts_with(lower(c.title), lower(%s)) DESC,
+                    c.code
+            LIMIT 10
+        """, (key, key, text, key, key, key, text)).fetchall()
+    return jsonify({"courses": [{"code": row["code"], "title": row["title"]} for row in rows]})
 
 
 @app.route("/api/students/search")
 def search_students():
-    course = request.args.get("course", "").strip().upper()
+    course = normalize_code(request.args.get("course", ""))
     text_filters = {name: request.args.get(name, "").strip() for name in TEXT_FILTERS}
     available = request.args.get("available", "true").strip().lower()
     try:
