@@ -83,7 +83,7 @@ unticked until a person has done the check themselves.
       temporary Postgres 17 container. The 2 skipped tests are the live
       Supabase integration tests, which are off by default. All 52
       frontend tests passed. CI has not run on this change yet.
-- [ ] Ran it manually: not yet done by a person, and the AI did not open
+- [x] Ran it manually: not yet done by a person, and the AI did not open
       the app in a browser. The AI confirmed that test discovery finds
       the same 128 tests as before the move, that the app loads 30 routes
       and 4 feature modules, and that both scripts start from their new
