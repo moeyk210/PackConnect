@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RealtimeProvider from './RealtimeProvider'
@@ -184,8 +184,10 @@ describe('AuthShell socket lifetime', () => {
     const { default: AuthShell } = await import('./AuthShell')
     render(<AuthShell />)
     const signOut = await screen.findByRole('button', { name: 'Sign out' })
+    // The socket connects just after the signed-in page appears, so wait for it
+    // rather than checking straight away (slower machines can lag behind).
+    await waitFor(() => expect(sockets.find((s) => s.connects)).toBeDefined())
     const socket = sockets.find((s) => s.connects)
-    expect(socket).toBeDefined()
     act(() => {
       window.location.hash = '#/app/requests' // navigation keeps the socket
       window.dispatchEvent(new HashChangeEvent('hashchange'))
