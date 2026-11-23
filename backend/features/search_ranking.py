@@ -47,11 +47,26 @@ class SearchFilters:
     include_unrated: bool = True
 
 
+def meets_filter(row, name, wanted):
+    """Whether the advisor meets one text filter.
+
+    Every filter is met when the profile field contains the wanted text. The
+    advice topics filter is also met when the topics are close enough in
+    meaning (for example "interview prep" and "Projects, interviews").
+    """
+    if wanted.lower() in (row.get(name) or "").lower():
+        return True
+    if name == "advice_topics":
+        meaning = ranking.meaning_match(row.get("topic_similarity"))
+        return meaning is not None and meaning >= ranking.MEANING_FILTER_THRESHOLD
+    return False
+
+
 def missed_filters(row, filters):
     """Return the names of the text filters this advisor does not meet, in a fixed order."""
     return [
         name for name in TEXT_FILTERS
-        if name in filters.text and filters.text[name].lower() not in (row.get(name) or "").lower()
+        if name in filters.text and not meets_filter(row, name, filters.text[name])
     ]
 
 
@@ -110,15 +125,18 @@ def match_reasons(row, filters, group):
         subject = course_subject(filters.course_key)
         taken = [code for code, key in zip(row["courses"], row["course_keys"]) if course_subject(key) == subject]
         reasons.append("Took " + ", ".join(dict.fromkeys(taken)))
-    topic_words = ranking.matching_topic_words(filters.text.get("advice_topics"), row.get("advice_topics"))
+    asked_topic = filters.text.get("advice_topics")
+    topic_words = ranking.matching_topic_words(asked_topic, row.get("advice_topics"))
     if topic_words:
         reasons.append("Advises on " + " ".join(topic_words))
+    elif asked_topic and meets_filter(row, "advice_topics", asked_topic):
+        reasons.append("Advises on related topics")
     return reasons + reputation_reasons(row)
 
 
 # Columns the route selects only so results can be ranked. They are removed
 # before results are sent, so responses keep their original public fields.
-INTERNAL_FIELDS = ("course_keys", "courses", "response_answered", "response_unanswered")
+INTERNAL_FIELDS = ("course_keys", "courses", "response_answered", "response_unanswered", "topic_similarity")
 
 
 @dataclass(frozen=True)
@@ -140,6 +158,7 @@ def advisor_facts(row):
         rating_count=row["reputation"]["rating_count"] or 0,
         answered_requests=row["response_answered"],
         unanswered_requests=row["response_unanswered"],
+        topic_similarity=row.get("topic_similarity"),
     )
 
 

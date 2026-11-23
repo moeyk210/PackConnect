@@ -425,8 +425,10 @@ def search_students():
     if available != "false":
         conditions.append(f"({availability_status_sql()}) = 'available'")
 
+    # The searched topic's fingerprint, so topics can match by meaning too.
+    topic_vector = topic_embedding_value(app.config["TOPIC_EMBEDDER"], filters.text.get("advice_topics"))
     with get_db() as db:
-        rows = fetch_advisor_rows(db, conditions, parameters)
+        rows = fetch_advisor_rows(db, conditions, parameters, topic_vector=topic_vector)
 
     results = rank_search_results(rows, filters)
     return jsonify(results_page(results, limit, offset))

@@ -243,3 +243,43 @@ class RankedSearchTests(SearchFixture):
     def test_unchecking_no_reviews_hides_unrated_advisors(self):
         data = self.response(course="CSC 510", include_unrated="false")
         self.assertEqual((data["students"], data["outside_filters"]), ([], []))
+
+
+class FixedEmbedder:
+    """Gives every searched topic the same fingerprint, so tests choose each advisor's closeness."""
+
+    QUERY = [1.0] + [0.0] * 383
+
+    def embed(self, texts):
+        return [self.QUERY for _ in texts]
+
+
+def fingerprint(first, second):
+    """A fingerprint whose meaning similarity to FixedEmbedder.QUERY is `first`."""
+    return "[" + ",".join(str(value) for value in [first, second] + [0.0] * 382) + "]"
+
+
+class MeaningSearchTests(SearchFixture):
+    def setUp(self):
+        super().setUp()
+        portal.app.config["TOPIC_EMBEDDER"] = FixedEmbedder()
+        with portal.get_db() as db:
+            # Faye's "Workload" is close in meaning to the search (similarity 0.8);
+            # Casey's is not (0.2). Neither shares a word with "interview prep".
+            for name, vector in (("Faye", fingerprint(0.8, 0.6)), ("Casey", fingerprint(0.2, 0.98))):
+                db.execute("UPDATE students SET topic_embedding = %s::extensions.vector WHERE id = %s",
+                           (vector, self.ids[name]))
+
+    def test_close_meaning_counts_as_meeting_the_topic_filter(self):
+        response = self.client.get("/api/students/search",
+                                   query_string={"course": "CSC 510", "advice_topics": "interview prep"})
+        data = response.get_json()
+        self.assertEqual([row["name"] for row in data["students"]], ["Faye"])
+        self.assertEqual(data["students"][0]["match_reasons"][0], "Advises on related topics")
+        self.assertIn("Casey", [row["name"] for row in data["outside_filters"]])
+
+    def test_similarity_stays_internal(self):
+        response = self.client.get("/api/students/search",
+                                   query_string={"course": "CSC 510", "advice_topics": "interview prep"})
+        for row in response.get_json()["students"] + response.get_json()["outside_filters"]:
+            self.assertNotIn("topic_similarity", row)
