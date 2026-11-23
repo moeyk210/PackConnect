@@ -6,7 +6,8 @@ in plain Python (see features/ranking.py and features/search_ranking.py).
 """
 
 from features.availability import availability_columns, workload_join
-from features.reputation import reputation_columns, reputation_join, response_count_columns, with_reputation
+from features.reputation import (AS_OF_PARAMETER_COUNT, reputation_columns, reputation_join,
+                                 response_count_columns, with_reputation)
 
 
 def course_key_sql(column):
@@ -22,13 +23,18 @@ NOT_BLOCKED_SQL = """NOT EXISTS (SELECT 1 FROM student_blocks b
     WHERE (b.blocker_id = %s AND b.blocked_id = s.id) OR (b.blocker_id = s.id AND b.blocked_id = %s))"""
 
 
-def fetch_advisor_rows(db, conditions, parameters):
+def fetch_advisor_rows(db, conditions, parameters, as_of=None):
     """Return advisor rows meeting every condition, with reputation nested and course lists attached.
 
     Each row has the public profile summary, availability and reputation, plus the
     internal fields ranking needs: completed course codes and their keys (in the
     same order), and raw response counts.
+
+    Pass as_of (a past time) to get reputation as it stood then, for the ranking
+    eval. Profiles, courses and availability are always today's.
     """
+    if as_of is not None:
+        parameters = [as_of] * AS_OF_PARAMETER_COUNT + list(parameters)
     # Course lists come back in the same order, so each code lines up with its key.
     courses_in_order = "FROM completed_courses c WHERE c.student_id = s.id ORDER BY c.course_code, c.id"
     rows = db.execute(f"""
@@ -43,7 +49,7 @@ def fetch_advisor_rows(db, conditions, parameters):
             {response_count_columns()},
             ARRAY(SELECT c.course_code {courses_in_order}) AS courses,
             ARRAY(SELECT {course_key_sql("c.course_code")} {courses_in_order}) AS course_keys
-        FROM students s {workload_join()} {reputation_join()}
+        FROM students s {workload_join()} {reputation_join(as_of=as_of is not None)}
         WHERE {" AND ".join(conditions)}
     """, parameters).fetchall()
     return [with_reputation(row) for row in rows]
