@@ -86,6 +86,18 @@ describe('SearchResults', () => {
     ).toBeInTheDocument()
   })
 
+  it('pages through matches only, not the students outside the filters', () => {
+    renderResults({
+      matches: [advisor(1, 'Zoe')],
+      outside: [advisor(2, 'Kai')],
+      totalMatches: 15,
+      totalOutside: 30,
+    })
+    expect(
+      screen.queryByRole('navigation', { name: 'Result pages' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('explains when only near misses were found', () => {
     renderResults({ outside: [advisor(2, 'Kai')], totalOutside: 1 })
     expect(
