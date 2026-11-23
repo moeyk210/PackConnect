@@ -1,0 +1,31 @@
+.top-match {
+  position: relative;
+  margin-bottom: 1.5rem;
+  padding: 1.75rem 1rem 1rem;
+  border: 2px solid #cc0000;
+  border-radius: 18px;
+  background: #fff7f7;
+}
+
+.top-match .student-card {
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.top-match-label {
+  position: absolute;
+  top: -0.8rem;
+  left: 1.25rem;
+  padding: 0.2rem 0.75rem;
+  border-radius: 999px;
+  background: #cc0000;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.outside-filters {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px dashed #d1d5db;
+}

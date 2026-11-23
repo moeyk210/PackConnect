@@ -12,7 +12,8 @@ import {
 import CourseAutocomplete from './CourseAutocomplete'
 import { availabilityLabel, capacityLabel } from './advisorAvailability'
 import ReputationBadges from './ReputationBadges'
-import StudentCard from './StudentCard'
+import SearchResults from './SearchResults'
+import { emptyResults, readSearchResults } from './searchResponse'
 
 const API_URL = ''
 
@@ -37,6 +38,7 @@ const emptyFilters = {
   skills: '',
   advice_topics: '',
   availableOnly: true,
+  includeUnrated: true,
 }
 
 function coursesToText(courses = []) {
@@ -61,7 +63,7 @@ function App({ user, onLogout, route, onUserUpdated }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [course, setCourse] = useState('CSC 510')
   const [filters, setFilters] = useState(emptyFilters)
-  const [students, setStudents] = useState([])
+  const [results, setResults] = useState(emptyResults)
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [profileError, setProfileError] = useState({ route: '', message: '' })
   const [profileForm, setProfileForm] = useState(emptyProfile)
@@ -80,7 +82,11 @@ function App({ user, onLogout, route, onUserUpdated }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
-  function searchUrl(searchCourse = course, searchFilters = filters) {
+  function searchUrl(
+    searchCourse = course,
+    searchFilters = filters,
+    offset = 0,
+  ) {
     const params = new URLSearchParams()
 
     if (searchCourse.trim()) params.set('course', searchCourse.trim())
@@ -95,6 +101,10 @@ function App({ user, onLogout, route, onUserUpdated }) {
       params.set('advice_topics', searchFilters.advice_topics.trim())
     }
     params.set('available', String(searchFilters.availableOnly))
+    // Only send these when they differ from the defaults, so ordinary
+    // searches keep the same address.
+    if (!searchFilters.includeUnrated) params.set('include_unrated', 'false')
+    if (offset > 0) params.set('offset', String(offset))
 
     return `${API_URL}/api/students/search?${params.toString()}`
   }
@@ -112,10 +122,11 @@ function App({ user, onLogout, route, onUserUpdated }) {
   async function searchStudents(
     searchCourse = course,
     searchFilters = filters,
+    offset = 0,
   ) {
     if (!hasSearchCriteria(searchCourse, searchFilters)) {
       setError('Please enter a course code or at least one filter.')
-      setStudents([])
+      setResults(emptyResults)
       return
     }
 
@@ -125,22 +136,29 @@ function App({ user, onLogout, route, onUserUpdated }) {
     setSelectedStudent(null)
 
     try {
-      const response = await fetch(searchUrl(searchCourse, searchFilters))
+      const response = await fetch(
+        searchUrl(searchCourse, searchFilters, offset),
+      )
 
       if (!response.ok) {
         throw new Error('Unable to search students.')
       }
 
       const data = await response.json()
-      setStudents(Array.isArray(data) ? data : (data.students ?? []))
+      setResults(readSearchResults(data))
     } catch {
       setError(
         'Could not connect to the Flask backend. Make sure it is running on port 5000.',
       )
-      setStudents([])
+      setResults(emptyResults)
     } finally {
       setLoading(false)
     }
+  }
+
+  function changePage(offset) {
+    searchStudents(course, filters, offset)
+    document.querySelector('.results')?.scrollIntoView?.({ behavior: 'smooth' })
   }
 
   function updateProfileField(field, value) {
@@ -268,25 +286,27 @@ function App({ user, onLogout, route, onUserUpdated }) {
       setProfileForm(emptyProfile)
       setNotice('Profile updated.')
       onUserUpdated(data.student)
-      setStudents((currentStudents) => {
+      // Keep the visible results in step with the saved profile.
+      const updatedMatches = (currentMatches) => {
         if (!profileMatchesSearch(data.student, payload.completed_courses)) {
-          return currentStudents.filter(
+          return currentMatches.filter(
             (student) => student.id !== data.student.id,
           )
         }
-
         const summary = data.student
-
-        if (currentStudents.some((student) => student.id === summary.id)) {
-          return currentStudents.map((student) =>
+        if (currentMatches.some((student) => student.id === summary.id)) {
+          return currentMatches.map((student) =>
             student.id === summary.id ? summary : student,
           )
         }
-
-        return [...currentStudents, summary].sort((first, second) =>
+        return [...currentMatches, summary].sort((first, second) =>
           first.name.localeCompare(second.name),
         )
-      })
+      }
+      setResults((current) => ({
+        ...current,
+        matches: updatedMatches(current.matches),
+      }))
     } catch (err) {
       setError(err.message || 'Could not save the student profile.')
     } finally {
@@ -304,8 +324,7 @@ function App({ user, onLogout, route, onUserUpdated }) {
         )
         if (!response.ok) throw new Error('Unable to search students.')
         const data = await response.json()
-        if (!controller.signal.aborted)
-          setStudents(Array.isArray(data) ? data : (data.students ?? []))
+        if (!controller.signal.aborted) setResults(readSearchResults(data))
       } catch {
         if (!controller.signal.aborted)
           setError(
@@ -524,6 +543,17 @@ function App({ user, onLogout, route, onUserUpdated }) {
                   Available only
                 </label>
 
+                <label className="filter-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={filters.includeUnrated}
+                    onChange={(event) =>
+                      updateFilter('includeUnrated', event.target.checked)
+                    }
+                  />
+                  Include advisors with no reviews yet
+                </label>
+
                 <button type="button" onClick={resetFilters}>
                   Reset
                 </button>
@@ -531,8 +561,9 @@ function App({ user, onLogout, route, onUserUpdated }) {
             </details>
             <div className="filter-chips" aria-label="Active filters">
               {Object.entries(filters)
+                // Text filters become removable chips; checkboxes do not.
                 .filter(
-                  ([key, value]) => key !== 'availableOnly' && value.trim(),
+                  ([, value]) => typeof value === 'string' && value.trim(),
                 )
                 .map(([key, value]) => (
                   <button
@@ -784,31 +815,11 @@ function App({ user, onLogout, route, onUserUpdated }) {
         )}
 
         {isSearchPage && (
-          <section className="results">
-            <div className="section-heading">
-              <div>
-                <h3>Students who can help</h3>
-                <p>Connect with peers who have experience in your course.</p>
-              </div>
-              <span className="result-count">
-                {students.length} student{students.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-
-            {loading ? (
-              <p className="empty-state">Searching for students...</p>
-            ) : students.length === 0 ? (
-              <p className="empty-state">
-                No students found. Try another course code.
-              </p>
-            ) : (
-              <div className="student-grid">
-                {students.map((student) => (
-                  <StudentCard key={student.id} student={student} />
-                ))}
-              </div>
-            )}
-          </section>
+          <SearchResults
+            results={results}
+            loading={loading}
+            onPageChange={changePage}
+          />
         )}
 
         {profileError.route === route && profileError.message && (

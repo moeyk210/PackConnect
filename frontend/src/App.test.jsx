@@ -79,6 +79,22 @@ describe('peer search', () => {
     )
   })
 
+  it('leaves out advisors with no reviews when that filter is unchecked', async () => {
+    const user = userEvent.setup()
+    render(<Workspace />)
+    await screen.findByRole('heading', { name: student.name })
+    await user.click(screen.getByText('Advanced filters'))
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: 'Include advisors with no reviews yet',
+      }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Find Students' }))
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/api/students/search?course=CSC+510&available=true&include_unrated=false',
+    )
+  })
+
   it('shows loading, then matching peers, and submits the entered course', async () => {
     const user = userEvent.setup()
     const pending = holdSearch()
