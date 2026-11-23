@@ -15,6 +15,7 @@ from features.community import create_community_blueprint
 from features.meetings import create_meetings_blueprint
 from features.recovery import create_recovery_blueprint
 from features.feedback import create_feedback_blueprint
+from features.courses import create_courses_blueprint
 from features.reputation import create_reputation_blueprint, reputation_columns, reputation_join, with_reputation
 from features.lifecycle import lock_students
 from features.availability import availability_payload, workload_join, availability_columns, availability_status_sql
@@ -77,6 +78,7 @@ app.register_blueprint(create_meetings_blueprint(get_db))
 app.register_blueprint(create_recovery_blueprint(get_db))
 app.register_blueprint(create_feedback_blueprint(get_db))
 app.register_blueprint(create_reputation_blueprint(get_db))
+app.register_blueprint(create_courses_blueprint(get_db))
 
 
 def normalize_courses(courses):
