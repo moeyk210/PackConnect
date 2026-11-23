@@ -443,3 +443,27 @@ The same database can run the whole app with fictional students: set
 `maya@demo.packconnect.test` (or any other seeded student) with the password
 `packconnect-demo-2026`. Stop it with `docker stop packconnect-demo`, which also
 deletes the demo data.
+
+### Development seed data
+
+To try search, filters, course pages and recommendations on varied data, seed a
+throwaway local database with `backend/scripts/seed_dev_data.py`. It adds 22
+fictional advisors across 31 courses in four subjects (CSC, MA, ST, ECE), with
+different programs, years, skills, advice topics, availability (open, unlimited,
+paused, full, not advising) and review histories, plus 8 students who are not
+advising, one profile without an account, and one block. It also loads the
+course catalog and creates topic fingerprints with the local model. It refuses
+non-local databases.
+
+```powershell
+docker run --rm -d --name packconnect-dev -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=packconnect_dev -p 127.0.0.1:54331:5432 pgvector/pgvector:pg17
+$dev = "postgresql://postgres:postgres@127.0.0.1:54331/packconnect_dev?sslmode=disable"
+python backend/scripts/seed_dev_data.py --database-url $dev
+```
+
+Set `$env:SUPABASE_DB_URL = $dev` before `python backend/app.py`, then sign in as
+`riley@dev.packconnect.test` (or any other seeded student) with the password
+`packconnect-dev-2026`. Good searches to try: `CSC 510` with the topic
+"interview prep", `CSC 522` (Isabela is only taking it, so she is not a match),
+and `MA 305` (no catalog page). `backend/tests/test_seed_dev_data.py` lists the
+expected result for each flow.
