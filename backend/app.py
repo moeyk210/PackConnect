@@ -17,10 +17,9 @@ from features.recovery import create_recovery_blueprint
 from features.typing import register_typing
 from features.feedback import create_feedback_blueprint
 from features.reputation import create_reputation_blueprint, reputation_columns, reputation_join, with_reputation
-from features.advisor_candidates import NOT_BLOCKED_SQL, course_key_sql, fetch_advisor_rows
+from features.advisor_candidates import NOT_BLOCKED_SQL, fetch_advisor_rows, same_subject_condition
 from features.recommendations import create_recommendations_blueprint
-from features.search_ranking import (TEXT_FILTERS, SearchFilters, course_subject, page_settings,
-                                     rank_search_results, results_page)
+from features.search_ranking import TEXT_FILTERS, SearchFilters, page_settings, rank_search_results, results_page
 from features.lifecycle import lock_students
 from features.availability import availability_payload, workload_join, availability_columns, availability_status_sql
 
@@ -415,14 +414,9 @@ def search_students():
 
     if filters.course_key:
         # Advisors who took the searched course or another course in its subject.
-        subject = course_subject(filters.course_key)
-        conditions.append(f"""
-            EXISTS (
-                SELECT 1 FROM completed_courses c
-                WHERE c.student_id = s.id AND {course_key_sql("c.course_code")} {"LIKE" if subject else "="} %s
-            )
-        """)
-        parameters.append(subject + "%" if subject else filters.course_key)
+        subject_sql, subject_parameter = same_subject_condition(filters.course_key)
+        conditions.append(subject_sql)
+        parameters.append(subject_parameter)
 
     if available != "false":
         conditions.append(f"({availability_status_sql()}) = 'available'")

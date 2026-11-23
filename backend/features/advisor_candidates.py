@@ -8,6 +8,7 @@ in plain Python (see features/ranking.py and features/search_ranking.py).
 from features.availability import availability_columns, workload_join
 from features.reputation import (AS_OF_PARAMETER_COUNT, reputation_columns, reputation_join,
                                  response_count_columns, with_reputation)
+from features.search_ranking import course_subject
 
 
 def course_key_sql(column):
@@ -16,6 +17,19 @@ def course_key_sql(column):
     Matches course_key() in app.py, so "csc 510", "CSC510" and "CSC-510" compare equal.
     """
     return f"regexp_replace(UPPER({column}), '[[:space:]-]+', '', 'g')"
+
+
+def same_subject_condition(course_key):
+    """Condition and parameter for advisors who took this course or another in its subject.
+
+    For example "CSC510" accepts any CSC course. A course key with no subject
+    letters only accepts that exact course. Returns (sql, parameter).
+    """
+    subject = course_subject(course_key)
+    operator, parameter = ("LIKE", subject + "%") if subject else ("=", course_key)
+    sql = f"""EXISTS (SELECT 1 FROM completed_courses c
+        WHERE c.student_id = s.id AND {course_key_sql("c.course_code")} {operator} %s)"""
+    return sql, parameter
 
 
 # Leaves out anyone the viewer blocked or who blocked the viewer. Takes the viewer's id twice.
