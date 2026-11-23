@@ -28,7 +28,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import app as portal
-from features.reputation import reputation_join, response_count_columns
+from features.reputation import AS_OF_PARAMETER_COUNT, reputation_columns, reputation_join, response_count_columns
 from tests.postgres_test_support import PostgresTestCase
 
 EMPTY = {"average_rating": None, "rating_count": 0, "helpful_percent": None,
@@ -153,6 +153,26 @@ class ReputationStatsTests(ReputationTestCase):
             ).fetchone()
         # Same rules as response_rate: 5 answered, 2 unanswered (71%).
         self.assertEqual((counts["response_answered"], counts["response_unanswered"]), (5, 2))
+
+    def stats_as_of(self, name, cutoff):
+        with portal.get_db() as db:
+            return db.execute(
+                f"""SELECT {reputation_columns()}, {response_count_columns()}
+                    FROM students s {reputation_join(as_of=True)} WHERE s.id = %s""",
+                [cutoff] * AS_OF_PARAMETER_COUNT + [self.ids[name]],
+            ).fetchone()
+
+    def test_stats_before_any_activity_are_empty(self):
+        stats = self.stats_as_of("busy", datetime.now(timezone.utc) - timedelta(days=1))
+        self.assertEqual((stats["reputation_rating_count"], stats["response_answered"],
+                          stats["response_unanswered"]), (0, 0, 0))
+
+    def test_stats_as_of_a_time_only_count_deadlines_passed_by_then(self):
+        stats = self.stats_as_of("busy", datetime.now(timezone.utc) + timedelta(hours=1))
+        # All feedback counts. The "expired" request's deadline (a week away in this
+        # fixture) had not passed by the cutoff, so only the overdue pending one is unanswered.
+        self.assertEqual((stats["reputation_rating_count"], stats["reputation_average_rating"]), (4, 7.3))
+        self.assertEqual((stats["response_answered"], stats["response_unanswered"]), (5, 1))
 
 
 class ReputationPrivacyTests(ReputationTestCase):
