@@ -51,45 +51,44 @@ const writes = () =>
   fetch.mock.calls.filter(([, options]) => options?.method === 'PUT')
 
 describe('peer search', () => {
-  it('searches with the selected suggestion and preserves advanced filters', async () => {
+  it('searches with the selected suggestion and keeps applied filters', async () => {
     const user = userEvent.setup()
     render(<Workspace />)
     await screen.findByRole('heading', { name: student.name })
-    await user.click(screen.getByText('Advanced filters'))
+    const searches = () =>
+      fetch.mock.calls
+        .map(([url]) => url)
+        .filter((url) => url.startsWith('/api/students/search?'))
+    await user.click(screen.getByRole('button', { name: /^Program/ }))
     await user.type(
       screen.getByRole('textbox', { name: 'Program' }),
-      'Computer Science',
+      'Computer Science{Enter}',
+    )
+    await waitFor(() => expect(searches()).toHaveLength(2))
+    expect(searches()[1]).toBe(
+      '/api/students/search?course=CSC+510&program=Computer+Science&available=true',
     )
     const input = screen.getByRole('combobox', { name: 'Course code' })
     await user.clear(input)
     await user.type(input, 'csc5')
     await screen.findByRole('option', { name: 'CSC 540' })
-    const searches = () =>
-      fetch.mock.calls.filter(([url]) =>
-        url.startsWith('/api/students/search?'),
-      )
-    expect(searches()).toHaveLength(1)
     await user.keyboard('{ArrowUp}{Enter}')
     expect(input).toHaveValue('CSC 540')
-    expect(searches()).toHaveLength(1)
+    expect(searches()).toHaveLength(2)
     await user.keyboard('{Enter}')
-    await waitFor(() => expect(searches()).toHaveLength(2))
-    expect(searches()[1][0]).toBe(
+    await waitFor(() => expect(searches()).toHaveLength(3))
+    expect(searches()[2]).toBe(
       '/api/students/search?course=CSC+540&program=Computer+Science&available=true',
     )
   })
 
-  it('leaves out advisors with no reviews when that filter is unchecked', async () => {
+  it('leaves out advisors with no reviews when that pill is switched off', async () => {
     const user = userEvent.setup()
     render(<Workspace />)
     await screen.findByRole('heading', { name: student.name })
-    await user.click(screen.getByText('Advanced filters'))
     await user.click(
-      screen.getByRole('checkbox', {
-        name: 'Include advisors with no reviews yet',
-      }),
+      screen.getByRole('button', { name: /New advisors \(no reviews\)/ }),
     )
-    await user.click(screen.getByRole('button', { name: 'Find Students' }))
     expect(fetch).toHaveBeenLastCalledWith(
       '/api/students/search?course=CSC+510&available=true&include_unrated=false',
     )

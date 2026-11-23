@@ -12,6 +12,7 @@ import {
 import CourseAutocomplete from './CourseAutocomplete'
 import { availabilityLabel, capacityLabel } from './advisorAvailability'
 import ReputationBadges from './ReputationBadges'
+import FilterBar from './FilterBar'
 import SearchResults from './SearchResults'
 import { emptyResults, readSearchResults } from './searchResponse'
 
@@ -168,11 +169,10 @@ function App({ user, onLogout, route, onUserUpdated }) {
     }))
   }
 
-  function updateFilter(field, value) {
-    setFilters((currentFilters) => ({
-      ...currentFilters,
-      [field]: value,
-    }))
+  // Filters from the pill bar apply at once, keeping the current course.
+  function applyFilters(nextFilters) {
+    setFilters(nextFilters)
+    searchStudents(course, nextFilters)
   }
 
   function resetFilters() {
@@ -485,100 +485,12 @@ function App({ user, onLogout, route, onUserUpdated }) {
               </button>
             </form>
 
-            <details className="advanced-filters">
-              <summary>Advanced filters</summary>
-              <div className="filter-panel" aria-label="Search filters">
-                <label>
-                  Program
-                  <input
-                    value={filters.program}
-                    onChange={(event) =>
-                      updateFilter('program', event.target.value)
-                    }
-                    placeholder="MS Computer Science"
-                  />
-                </label>
-
-                <label>
-                  Year
-                  <input
-                    value={filters.year}
-                    onChange={(event) =>
-                      updateFilter('year', event.target.value)
-                    }
-                    placeholder="Second Year"
-                  />
-                </label>
-
-                <label>
-                  Skills
-                  <input
-                    value={filters.skills}
-                    onChange={(event) =>
-                      updateFilter('skills', event.target.value)
-                    }
-                    placeholder="React, Python"
-                  />
-                </label>
-
-                <label>
-                  Advice topics
-                  <input
-                    value={filters.advice_topics}
-                    onChange={(event) =>
-                      updateFilter('advice_topics', event.target.value)
-                    }
-                    placeholder="Projects, Workload"
-                  />
-                </label>
-
-                <label className="filter-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={filters.availableOnly}
-                    onChange={(event) =>
-                      updateFilter('availableOnly', event.target.checked)
-                    }
-                  />
-                  Available only
-                </label>
-
-                <label className="filter-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={filters.includeUnrated}
-                    onChange={(event) =>
-                      updateFilter('includeUnrated', event.target.checked)
-                    }
-                  />
-                  Include advisors with no reviews yet
-                </label>
-
-                <button type="button" onClick={resetFilters}>
-                  Reset
-                </button>
-              </div>
-            </details>
-            <div className="filter-chips" aria-label="Active filters">
-              {Object.entries(filters)
-                // Text filters become removable chips; checkboxes do not.
-                .filter(
-                  ([, value]) => typeof value === 'string' && value.trim(),
-                )
-                .map(([key, value]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      const next = { ...filters, [key]: '' }
-                      setFilters(next)
-                      searchStudents(course, next)
-                    }}
-                  >
-                    {key.replaceAll('_', ' ')}: {value} (remove)
-                  </button>
-                ))}
-            </div>
+            <FilterBar
+              filters={filters}
+              defaults={emptyFilters}
+              onApply={applyFilters}
+              onClearAll={resetFilters}
+            />
             <p className="search-hint">
               Try searching for CSC 510, CSC 540, or CSC 515.
             </p>
