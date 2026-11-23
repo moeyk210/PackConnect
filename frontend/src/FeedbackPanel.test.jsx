@@ -140,4 +140,53 @@ describe('FeedbackPanel', () => {
     expect(screen.getByText('Not helpful')).toBeInTheDocument()
     expect(screen.queryByText('Clear project tips.')).not.toBeInTheDocument()
   })
+
+  it('offers optional 1 to 5 workload and difficulty ratings', async () => {
+    const { user } = renderPanel({ courseCode: 'CSC 510' })
+    const workload = screen.getByRole('group', {
+      name: 'Course workload (optional)',
+    })
+    expect(within(workload).getAllByRole('button')).toHaveLength(5)
+    expect(
+      screen.getByRole('group', { name: 'Course difficulty (optional)' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/rate CSC 510 itself/)).toBeInTheDocument()
+
+    const four = within(workload).getByRole('button', { name: '4 out of 5' })
+    await user.click(four)
+    expect(four).toHaveAttribute('aria-pressed', 'true')
+    await user.click(four)
+    expect(four).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('sends the course ratings only when they were chosen', async () => {
+    fetch.mockResolvedValue(response({ feedback: givenFeedback }, 201))
+    const { user } = renderPanel()
+    await user.click(screen.getByRole('button', { name: '8 out of 10' }))
+    await user.click(screen.getByRole('button', { name: 'Yes' }))
+    const workload = screen.getByRole('group', {
+      name: 'Course workload (optional)',
+    })
+    await user.click(
+      within(workload).getByRole('button', { name: '2 out of 5' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Send feedback' }))
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      rating: 8,
+      helpful: true,
+      comment: '',
+      workload_rating: 2,
+    })
+  })
+
+  it('shows the course ratings in the read-only summary', () => {
+    renderPanel({
+      feedback: { ...givenFeedback, workload_rating: 4, difficulty_rating: 2 },
+    })
+    expect(
+      screen.getByText('Workload 4/5 · Difficulty 2/5'),
+    ).toBeInTheDocument()
+  })
 })

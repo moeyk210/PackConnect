@@ -11,6 +11,7 @@ from psycopg.conninfo import conninfo_to_dict
 import app as portal
 from core.identity import create_auth_session
 from scripts.migrate import MIGRATIONS, migration_sql
+from tests.fake_embedder import FakeEmbedder
 from tests.test_seeds import seed_students
 
 
@@ -34,6 +35,9 @@ class PostgresTestCase(unittest.TestCase):
         self.original_url = portal.app.config.get("SUPABASE_DB_URL")
         portal.app.config["SUPABASE_DB_URL"] = database_url
         portal.app.config["TEST_DB_SCHEMA"] = self.schema
+        # Never download or run the real language model in tests.
+        self.original_embedder = portal.app.config.get("TOPIC_EMBEDDER")
+        portal.app.config["TOPIC_EMBEDDER"] = FakeEmbedder()
         self.addCleanup(self.restore_database)
         with psycopg.connect(database_url, autocommit=True) as db:
             db.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(self.schema)))
@@ -55,6 +59,7 @@ class PostgresTestCase(unittest.TestCase):
     def restore_database(self):
         portal.app.config["SUPABASE_DB_URL"] = self.original_url
         portal.app.config.pop("TEST_DB_SCHEMA", None)
+        portal.app.config["TOPIC_EMBEDDER"] = self.original_embedder
 
     def drop_schema(self, database_url):
         with psycopg.connect(database_url, autocommit=True) as db:

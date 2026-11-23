@@ -11,12 +11,19 @@ from features.messaging import create_messaging_blueprint, initialize_messaging
 from core.database import connect_database
 from core.realtime import disconnect_session, register_realtime, socketio
 from core.identity import create_auth_session, registered_student_sql, revoke_auth_session, session_student_id
+from core.courses import normalize_code
 from features.community import create_community_blueprint
 from features.meetings import create_meetings_blueprint
 from features.recovery import create_recovery_blueprint
 from features.typing import register_typing
 from features.feedback import create_feedback_blueprint
+from features.courses import create_courses_blueprint
 from features.reputation import create_reputation_blueprint, reputation_columns, reputation_join, with_reputation
+from features.advisor_candidates import NOT_BLOCKED_SQL, fetch_advisor_rows, same_subject_condition
+from features.recommendations import create_recommendations_blueprint
+from features.topic_embeddings import topic_embedding_value
+from core.embeddings import TopicEmbedder
+from features.search_ranking import TEXT_FILTERS, SearchFilters, page_settings, rank_search_results, results_page
 from features.lifecycle import lock_students
 from features.availability import availability_payload, workload_join, availability_columns, availability_status_sql
 
@@ -66,6 +73,8 @@ app.config.update(
 CORS(app)
 
 app.config["SUPABASE_DB_URL"] = os.getenv("SUPABASE_DB_URL")
+# Makes topic fingerprints for meaning-based matching. Tests swap in a stand-in.
+app.config.setdefault("TOPIC_EMBEDDER", TopicEmbedder())
 
 
 def get_db():
@@ -78,6 +87,8 @@ app.register_blueprint(create_meetings_blueprint(get_db))
 app.register_blueprint(create_recovery_blueprint(get_db))
 app.register_blueprint(create_feedback_blueprint(get_db))
 app.register_blueprint(create_reputation_blueprint(get_db))
+app.register_blueprint(create_courses_blueprint(get_db))
+app.register_blueprint(create_recommendations_blueprint(get_db))
 register_realtime(app, get_db)
 register_typing(get_db)
 
@@ -90,7 +101,7 @@ def normalize_courses(courses):
     seen = set()
 
     for course in courses:
-        course_code = course.strip().upper()
+        course_code = normalize_code(course)
         if course_code and course_code not in seen:
             normalized.append(course_code)
             seen.add(course_code)
@@ -322,7 +333,7 @@ def register():
             or any(not isinstance(course, str) or not course.strip()
                    or len(course.strip()) > 30 for course in courses)):
         return jsonify({"error": "Provide up to 50 completed course codes, each at most 30 characters."}), 400
-    courses = sorted({course.strip().upper() for course in courses})
+    courses = sorted({normalize_code(course) for course in courses})
     try:
         advising = {"max_open_requests": 5, "pause_until": None, **availability_payload(data)}
     except ValueError as error:
@@ -364,85 +375,77 @@ def course_key(value):
 
 @app.route("/api/courses")
 def suggest_courses():
-    query = course_key(request.args.get("q", ""))
-    if not query or len(query) > 30:
+    """Catalog autocomplete: up to 10 courses whose code starts with, or whose
+    title contains, the query. Spaces, hyphens and case are ignored in codes."""
+    text = re.sub(r"\s+", " ", request.args.get("q", "")).strip()
+    key = course_key(text)
+    if not key or len(text) > 100:
         return jsonify({"courses": []})
     with get_db() as db:
-        rows = db.execute(f"""
-            SELECT DISTINCT regexp_replace(UPPER(c.course_code), '[[:space:]-]+', '', 'g') AS code
-            FROM completed_courses c
-            JOIN students s ON s.id = c.student_id
-            WHERE {registered_student_sql()}
-              AND starts_with(regexp_replace(UPPER(c.course_code), '[[:space:]-]+', '', 'g'), %s)
-            ORDER BY code LIMIT 10
-        """, (query,)).fetchall()
-    return jsonify({"courses": [re.sub(r"^([A-Z]+)(\d)", r"\1 \2", row["code"]) for row in rows]})
+        rows = db.execute("""
+            SELECT c.code, c.title
+            FROM (SELECT code, title,
+                        regexp_replace(upper(code), '[[:space:]-]+', '', 'g') AS code_key,
+                        regexp_replace(upper(code), '^[[:alpha:]]+[[:space:]-]*', '') AS number_key
+                    FROM courses) AS c
+            WHERE starts_with(c.code_key, %s)
+                OR starts_with(c.number_key, %s)
+                OR position(lower(%s) in lower(c.title)) > 0
+            ORDER BY (c.code_key = %s) DESC,
+                    starts_with(c.code_key, %s) DESC,
+                    starts_with(c.number_key, %s) DESC,
+                    starts_with(lower(c.title), lower(%s)) DESC,
+                    c.code
+            LIMIT 10
+        """, (key, key, text, key, key, key, text)).fetchall()
+    return jsonify({"courses": [{"code": row["code"], "title": row["title"]} for row in rows]})
 
 
 @app.route("/api/students/search")
 def search_students():
-    course = request.args.get("course", "").strip().upper()
-    program = request.args.get("program", "").strip()
-    year = request.args.get("year", "").strip()
-    skills = request.args.get("skills", "").strip()
-    advice_topics = request.args.get("advice_topics", "").strip()
+    course = normalize_code(request.args.get("course", ""))
+    text_filters = {name: request.args.get(name, "").strip() for name in TEXT_FILTERS}
     available = request.args.get("available", "true").strip().lower()
+    try:
+        limit, offset = page_settings(request.args)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    filters = SearchFilters(
+        course_key=course_key(course),
+        text={name: value for name, value in text_filters.items() if value},
+        include_unrated=request.args.get("include_unrated", "true").strip().lower() != "false",
+    )
 
-    if not any((course, program, year, skills, advice_topics)):
-        return jsonify({"students": []})
+    if not filters.course_key and not filters.text:
+        return jsonify(results_page([], limit, offset))
 
+    # The database only narrows the candidates; search_ranking decides who is a
+    # match, who is outside the filters, and the order. Text filters are checked
+    # there too, so near misses can still be shown below the matches.
     # Include both local accounts and confirmed Supabase registrations.
     conditions = [registered_student_sql()]
     parameters = []
     viewer = session.get("student_id")
     if viewer:
-        conditions.append("NOT EXISTS (SELECT 1 FROM student_blocks b WHERE (b.blocker_id=%s AND b.blocked_id=s.id) OR (b.blocker_id=s.id AND b.blocked_id=%s))")
-        parameters.extend([viewer,viewer])
+        conditions.append(NOT_BLOCKED_SQL)
+        parameters.extend([viewer, viewer])
 
-    if course:
-        conditions.append("""
-            EXISTS (
-                SELECT 1
-                FROM completed_courses c
-                WHERE c.student_id = s.id
-                  AND regexp_replace(UPPER(c.course_code), '[[:space:]-]+', '', 'g') = %s
-            )
-        """)
-        parameters.append(course_key(course))
+    if filters.course_key:
+        # Advisors who took the searched course or another course in its subject.
+        subject_sql, subject_parameter = same_subject_condition(filters.course_key)
+        conditions.append(subject_sql)
+        parameters.append(subject_parameter)
 
     if available != "false":
         conditions.append(f"({availability_status_sql()}) = 'available'")
 
-    for column, value in (
-        ("s.program", program),
-        ("s.year", year),
-        ("s.skills", skills),
-        ("s.advice_topics", advice_topics),
-    ):
-        if value:
-            conditions.append(f"LOWER(COALESCE({column}, '')) LIKE %s")
-            parameters.append(f"%{value.lower()}%")
-
-    where_clause = " AND ".join(conditions) if conditions else "1 = 1"
-
+    # The searched topic's fingerprint, so topics can match by meaning too.
+    topic_vector = topic_embedding_value(app.config["TOPIC_EMBEDDER"], filters.text.get("advice_topics"))
     with get_db() as db:
-        rows = db.execute(f"""
-            SELECT DISTINCT
-                s.id,
-                s.name,
-                s.program,
-                s.year,
-                s.skills,
-                s.advice_topics,
-                s.willing_to_advise, {availability_columns()}, {reputation_columns()}
-            FROM students s {workload_join()} {reputation_join()}
-            WHERE {where_clause}
-            ORDER BY s.name
-        """, parameters).fetchall()
+        rows = fetch_advisor_rows(db, conditions, parameters, topic_vector=topic_vector)
 
-    return jsonify({
-        "students": [with_reputation(row) for row in rows]
-    })
+    results = rank_search_results(rows, filters)
+    return jsonify(results_page(results, limit, offset))
 
 
 @app.route("/api/students/<int:student_id>")
@@ -479,6 +482,9 @@ def update_student(student_id):
             "error": "Name, program, and year are required."
         }), 400
 
+    # Worked out before the database transaction so the model never holds row locks.
+    topic_embedding = topic_embedding_value(app.config["TOPIC_EMBEDDER"], payload["advice_topics"])
+
     with get_db() as db:
         existing_student = db.execute("""
             SELECT id, max_open_requests, pause_until
@@ -500,7 +506,8 @@ def update_student(student_id):
                 advice_topics = %s,
                 willing_to_advise = %s,
                 max_open_requests = %s,
-                pause_until = %s
+                pause_until = %s,
+                topic_embedding = %s::extensions.vector
             WHERE id = %s
         """, (
             payload["name"],
@@ -513,6 +520,7 @@ def update_student(student_id):
             payload["willing_to_advise"],
             payload.get("max_open_requests", existing_student["max_open_requests"]),
             payload.get("pause_until", existing_student["pause_until"]),
+            topic_embedding,
             student_id,
         ))
 

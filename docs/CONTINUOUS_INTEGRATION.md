@@ -14,7 +14,8 @@ once the workflow exists on the default branch.
 Each job has a ten-minute timeout. Installation, test, lint, or build failures
 fail the corresponding job and workflow; failures are not suppressed.
 
-The backend tests run in temporary schemas on a PostgreSQL 17 service. CI sets
+The backend tests run in temporary schemas on a PostgreSQL 17 service with
+pgvector (the `pgvector/pgvector:pg17` image). CI sets
 `TEST_DATABASE_URL` to that local service and keeps live Supabase settings empty.
 No live Supabase credentials or GitHub repository secrets are required. The
 schema fixtures supply the minimal Supabase roles and Auth reference table.
