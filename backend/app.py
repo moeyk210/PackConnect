@@ -19,6 +19,8 @@ from features.feedback import create_feedback_blueprint
 from features.reputation import create_reputation_blueprint, reputation_columns, reputation_join, with_reputation
 from features.advisor_candidates import NOT_BLOCKED_SQL, fetch_advisor_rows, same_subject_condition
 from features.recommendations import create_recommendations_blueprint
+from features.topic_embeddings import topic_embedding_value
+from core.embeddings import TopicEmbedder
 from features.search_ranking import TEXT_FILTERS, SearchFilters, page_settings, rank_search_results, results_page
 from features.lifecycle import lock_students
 from features.availability import availability_payload, workload_join, availability_columns, availability_status_sql
@@ -69,6 +71,8 @@ app.config.update(
 CORS(app)
 
 app.config["SUPABASE_DB_URL"] = os.getenv("SUPABASE_DB_URL")
+# Makes topic fingerprints for meaning-based matching. Tests swap in a stand-in.
+app.config.setdefault("TOPIC_EMBEDDER", TopicEmbedder())
 
 
 def get_db():
@@ -462,6 +466,9 @@ def update_student(student_id):
             "error": "Name, program, and year are required."
         }), 400
 
+    # Worked out before the database transaction so the model never holds row locks.
+    topic_embedding = topic_embedding_value(app.config["TOPIC_EMBEDDER"], payload["advice_topics"])
+
     with get_db() as db:
         existing_student = db.execute("""
             SELECT id, max_open_requests, pause_until
@@ -483,7 +490,8 @@ def update_student(student_id):
                 advice_topics = %s,
                 willing_to_advise = %s,
                 max_open_requests = %s,
-                pause_until = %s
+                pause_until = %s,
+                topic_embedding = %s::extensions.vector
             WHERE id = %s
         """, (
             payload["name"],
@@ -496,6 +504,7 @@ def update_student(student_id):
             payload["willing_to_advise"],
             payload.get("max_open_requests", existing_student["max_open_requests"]),
             payload.get("pause_until", existing_student["pause_until"]),
+            topic_embedding,
             student_id,
         ))
 
