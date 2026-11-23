@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 import app as portal
-from tests.postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase, sign_in
 
 
 class FeedbackApiTestCase(PostgresTestCase):
@@ -25,8 +25,7 @@ class FeedbackApiTestCase(PostgresTestCase):
             self.request_id = self.create_request(db, "accepted")
         for name, student_id in self.ids.items():
             client = portal.app.test_client()
-            with client.session_transaction() as session:
-                session["student_id"] = student_id
+            sign_in(client, student_id)
             self.clients[name] = client
 
     def create_request(self, db, status, sender="asker", recipient="advisor", messages=True):
@@ -214,8 +213,7 @@ class FeedbackDuplicateTests(FeedbackApiTestCase):
         clients = []
         for _ in range(2):
             client = portal.app.test_client()
-            with client.session_transaction() as session:
-                session["student_id"] = self.ids["asker"]
+            sign_in(client, self.ids["asker"])
             clients.append(client)
         barrier = Barrier(2)
 

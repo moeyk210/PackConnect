@@ -40,7 +40,8 @@ See the [Step 1 baseline audit](docs/STEP_1_AUDIT.md) for verified behavior, lim
 - View a student's profile, including program, year, bio, interests, and completed courses (as returned by the API).
 - Store accounts, profiles, courses, requests, chat, and notifications in Supabase PostgreSQL.
 - Get in-app bell notifications for incoming requests, request decisions, and new chat messages. Read/unread state is saved per account.
-- Chat privately after acceptance. Both participants can send messages of up to 2,000 characters, and conversations persist across visits. Open chats refresh every three seconds.
+- Chat privately after acceptance. Both participants can send messages of up to 2,000 characters, and conversations persist across visits. Messages, notifications, requests, the inbox, and meetings update in real time over WebSockets, with "Seen" read receipts and typing indicators. If the live connection drops, the app falls back to polling and catches up on reconnect. See [real-time messaging](docs/REALTIME_MESSAGING.md).
+- Logging out ends that browser's session on the server, so a copied session cookie stops working. Other signed-in devices stay signed in.
 - Rate a conversation from 1 to 10, say whether the advice was helpful, and add an optional comment, once both people have sent a message. Search cards and profiles show each advisor's average rating, students helped, and response rate. See [feedback, reputation, and the M0 eval](#advice-feedback-reputation-and-m0-eval).
 
 New request and community tools include cancellation, seven-day expiration,
