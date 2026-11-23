@@ -100,6 +100,46 @@ Response:
                   "match_reasons": ["Took CSC 510 and CSC 540", "9.0/10 (20 reviews)"] } ] }
 ```
 
+## Ranking eval
+
+`backend/scripts/ranking_eval.py` measures how often the advisor who accepted a
+request was in the top 3 of the ranked search. For every accepted request it
+rebuilds that search (the request's course and topic), ranks advisors using only
+reviews and requests from before the request was sent, and checks where the
+advisor who accepted landed. It also ranks the same cases the old way (advisors
+who took the exact course, A-Z) as a baseline. It only reads.
+
+PackConnect has no real history yet, so `backend/scripts/seed_ranking_eval.py`
+creates a simulated semester in a dedicated local database: 21 fictional
+advisors, 20 students, and 80 requests over 10 weeks. The students' behavior is
+described at the top of that script; it does not use the app's scoring code.
+
+```powershell
+docker exec packconnect-test-db psql -U postgres -c "CREATE DATABASE packconnect_sim"
+.\.venv\Scripts\python.exe backend/scripts/seed_ranking_eval.py --database-url "postgresql://postgres:postgres@127.0.0.1:5432/packconnect_sim?sslmode=disable"
+.\.venv\Scripts\python.exe backend/scripts/ranking_eval.py --database-url "postgresql://postgres:postgres@127.0.0.1:5432/packconnect_sim?sslmode=disable"
+```
+
+Use any local PostgreSQL in place of the Docker container. The seed script
+refuses non-local databases, so simulated history never mixes with real data.
+
+Recorded result on the simulated semester (56 accepted requests):
+
+| Order | Advisor who accepted was in the top 3 |
+| --- | --- |
+| New ranking | 42.9% (24 of 56) |
+| Old A-Z order | 17.9% (10 of 56) |
+
+These numbers come from simulated students, not real ones. They show the eval
+works and how the ranking compares with the old order under realistic
+conditions. Run the eval on the real database once there is enough history.
+
+Limits:
+- The database records when a request was sent, not when it was answered, so a
+  request sent before a case counts with its final answer.
+- Availability history is not stored, so the eval ignores availability.
+- Profiles and courses are today's, not as they were at the time.
+
 ## Verification
 
 ```powershell
