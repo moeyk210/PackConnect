@@ -12,6 +12,9 @@ import {
 import CourseAutocomplete from './CourseAutocomplete'
 import { availabilityLabel, capacityLabel } from './advisorAvailability'
 import ReputationBadges from './ReputationBadges'
+import FilterBar from './FilterBar'
+import SearchResults from './SearchResults'
+import { emptyResults, readSearchResults } from './searchResponse'
 
 const API_URL = ''
 
@@ -36,6 +39,7 @@ const emptyFilters = {
   skills: '',
   advice_topics: '',
   availableOnly: true,
+  includeUnrated: true,
 }
 
 function coursesToText(courses = []) {
@@ -60,7 +64,7 @@ function App({ user, onLogout, route, onUserUpdated }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [course, setCourse] = useState('CSC 510')
   const [filters, setFilters] = useState(emptyFilters)
-  const [students, setStudents] = useState([])
+  const [results, setResults] = useState(emptyResults)
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [profileError, setProfileError] = useState({ route: '', message: '' })
   const [profileForm, setProfileForm] = useState(emptyProfile)
@@ -79,7 +83,11 @@ function App({ user, onLogout, route, onUserUpdated }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
-  function searchUrl(searchCourse = course, searchFilters = filters) {
+  function searchUrl(
+    searchCourse = course,
+    searchFilters = filters,
+    offset = 0,
+  ) {
     const params = new URLSearchParams()
 
     if (searchCourse.trim()) params.set('course', searchCourse.trim())
@@ -94,6 +102,10 @@ function App({ user, onLogout, route, onUserUpdated }) {
       params.set('advice_topics', searchFilters.advice_topics.trim())
     }
     params.set('available', String(searchFilters.availableOnly))
+    // Only send these when they differ from the defaults, so ordinary
+    // searches keep the same address.
+    if (!searchFilters.includeUnrated) params.set('include_unrated', 'false')
+    if (offset > 0) params.set('offset', String(offset))
 
     return `${API_URL}/api/students/search?${params.toString()}`
   }
@@ -111,10 +123,11 @@ function App({ user, onLogout, route, onUserUpdated }) {
   async function searchStudents(
     searchCourse = course,
     searchFilters = filters,
+    offset = 0,
   ) {
     if (!hasSearchCriteria(searchCourse, searchFilters)) {
       setError('Please enter a course code or at least one filter.')
-      setStudents([])
+      setResults(emptyResults)
       return
     }
 
@@ -124,22 +137,29 @@ function App({ user, onLogout, route, onUserUpdated }) {
     setSelectedStudent(null)
 
     try {
-      const response = await fetch(searchUrl(searchCourse, searchFilters))
+      const response = await fetch(
+        searchUrl(searchCourse, searchFilters, offset),
+      )
 
       if (!response.ok) {
         throw new Error('Unable to search students.')
       }
 
       const data = await response.json()
-      setStudents(Array.isArray(data) ? data : (data.students ?? []))
+      setResults(readSearchResults(data))
     } catch {
       setError(
         'Could not connect to the Flask backend. Make sure it is running on port 5000.',
       )
-      setStudents([])
+      setResults(emptyResults)
     } finally {
       setLoading(false)
     }
+  }
+
+  function changePage(offset) {
+    searchStudents(course, filters, offset)
+    document.querySelector('.results')?.scrollIntoView?.({ behavior: 'smooth' })
   }
 
   function updateProfileField(field, value) {
@@ -149,11 +169,10 @@ function App({ user, onLogout, route, onUserUpdated }) {
     }))
   }
 
-  function updateFilter(field, value) {
-    setFilters((currentFilters) => ({
-      ...currentFilters,
-      [field]: value,
-    }))
+  // Filters from the pill bar apply at once, keeping the current course.
+  function applyFilters(nextFilters) {
+    setFilters(nextFilters)
+    searchStudents(course, nextFilters)
   }
 
   function resetFilters() {
@@ -267,25 +286,27 @@ function App({ user, onLogout, route, onUserUpdated }) {
       setProfileForm(emptyProfile)
       setNotice('Profile updated.')
       onUserUpdated(data.student)
-      setStudents((currentStudents) => {
+      // Keep the visible results in step with the saved profile.
+      const updatedMatches = (currentMatches) => {
         if (!profileMatchesSearch(data.student, payload.completed_courses)) {
-          return currentStudents.filter(
+          return currentMatches.filter(
             (student) => student.id !== data.student.id,
           )
         }
-
         const summary = data.student
-
-        if (currentStudents.some((student) => student.id === summary.id)) {
-          return currentStudents.map((student) =>
+        if (currentMatches.some((student) => student.id === summary.id)) {
+          return currentMatches.map((student) =>
             student.id === summary.id ? summary : student,
           )
         }
-
-        return [...currentStudents, summary].sort((first, second) =>
+        return [...currentMatches, summary].sort((first, second) =>
           first.name.localeCompare(second.name),
         )
-      })
+      }
+      setResults((current) => ({
+        ...current,
+        matches: updatedMatches(current.matches),
+      }))
     } catch (err) {
       setError(err.message || 'Could not save the student profile.')
     } finally {
@@ -303,8 +324,7 @@ function App({ user, onLogout, route, onUserUpdated }) {
         )
         if (!response.ok) throw new Error('Unable to search students.')
         const data = await response.json()
-        if (!controller.signal.aborted)
-          setStudents(Array.isArray(data) ? data : (data.students ?? []))
+        if (!controller.signal.aborted) setResults(readSearchResults(data))
       } catch {
         if (!controller.signal.aborted)
           setError(
@@ -465,88 +485,12 @@ function App({ user, onLogout, route, onUserUpdated }) {
               </button>
             </form>
 
-            <details className="advanced-filters">
-              <summary>Advanced filters</summary>
-              <div className="filter-panel" aria-label="Search filters">
-                <label>
-                  Program
-                  <input
-                    value={filters.program}
-                    onChange={(event) =>
-                      updateFilter('program', event.target.value)
-                    }
-                    placeholder="MS Computer Science"
-                  />
-                </label>
-
-                <label>
-                  Year
-                  <input
-                    value={filters.year}
-                    onChange={(event) =>
-                      updateFilter('year', event.target.value)
-                    }
-                    placeholder="Second Year"
-                  />
-                </label>
-
-                <label>
-                  Skills
-                  <input
-                    value={filters.skills}
-                    onChange={(event) =>
-                      updateFilter('skills', event.target.value)
-                    }
-                    placeholder="React, Python"
-                  />
-                </label>
-
-                <label>
-                  Advice topics
-                  <input
-                    value={filters.advice_topics}
-                    onChange={(event) =>
-                      updateFilter('advice_topics', event.target.value)
-                    }
-                    placeholder="Projects, Workload"
-                  />
-                </label>
-
-                <label className="filter-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={filters.availableOnly}
-                    onChange={(event) =>
-                      updateFilter('availableOnly', event.target.checked)
-                    }
-                  />
-                  Available only
-                </label>
-
-                <button type="button" onClick={resetFilters}>
-                  Reset
-                </button>
-              </div>
-            </details>
-            <div className="filter-chips" aria-label="Active filters">
-              {Object.entries(filters)
-                .filter(
-                  ([key, value]) => key !== 'availableOnly' && value.trim(),
-                )
-                .map(([key, value]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      const next = { ...filters, [key]: '' }
-                      setFilters(next)
-                      searchStudents(course, next)
-                    }}
-                  >
-                    {key.replaceAll('_', ' ')}: {value} (remove)
-                  </button>
-                ))}
-            </div>
+            <FilterBar
+              filters={filters}
+              defaults={emptyFilters}
+              onApply={applyFilters}
+              onClearAll={resetFilters}
+            />
             <p className="search-hint">
               Try searching for CSC 510, CSC 540, or CSC 515.
             </p>
@@ -783,71 +727,11 @@ function App({ user, onLogout, route, onUserUpdated }) {
         )}
 
         {isSearchPage && (
-          <section className="results">
-            <div className="section-heading">
-              <div>
-                <h3>Students who can help</h3>
-                <p>Connect with peers who have experience in your course.</p>
-              </div>
-              <span className="result-count">
-                {students.length} student{students.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-
-            {loading ? (
-              <p className="empty-state">Searching for students...</p>
-            ) : students.length === 0 ? (
-              <p className="empty-state">
-                No students found. Try another course code.
-              </p>
-            ) : (
-              <div className="student-grid">
-                {students.map((student) => (
-                  <article className="student-card" key={student.id}>
-                    <div className="avatar">
-                      {student.name
-                        ?.split(' ')
-                        .map((part) => part[0])
-                        .slice(0, 2)
-                        .join('')}
-                    </div>
-
-                    <h4>{student.name}</h4>
-
-                    <p className="student-program">
-                      {student.program || 'NC State Student'}
-                    </p>
-
-                    {student.year && (
-                      <p className="student-year">{student.year}</p>
-                    )}
-
-                    {student.advice_topics && (
-                      <p className="student-year">
-                        Can help with {student.advice_topics}
-                      </p>
-                    )}
-
-                    <span
-                      className="available-badge"
-                      data-availability={student.availability_status}
-                    >
-                      {availabilityLabel(student)}
-                    </span>
-                    <p className="profile-note">{capacityLabel(student)}</p>
-                    <ReputationBadges reputation={student.reputation} />
-
-                    <a
-                      className="profile-button peer-profile-link"
-                      href={`#/app/students/${student.id}`}
-                    >
-                      View Profile →
-                    </a>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
+          <SearchResults
+            results={results}
+            loading={loading}
+            onPageChange={changePage}
+          />
         )}
 
         {profileError.route === route && profileError.message && (

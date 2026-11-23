@@ -5,3 +5,4 @@ supabase>=2,<3
 psycopg[binary,pool]>=3.2,<4
 Flask-SocketIO>=5.7,<6
 simple-websocket>=1.1,<2
+fastembed>=0.9,<1

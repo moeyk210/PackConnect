@@ -123,7 +123,7 @@ reach another backend, such as one on port 5000 connected to Supabase. On
 Windows two servers can bind port 5000 at once without an error.
 
 ```powershell
-docker run -d --name packconnect-test-pg -e POSTGRES_PASSWORD=postgres -p 55432:5432 postgres:17
+docker run -d --name packconnect-test-pg -e POSTGRES_PASSWORD=postgres -p 55432:5432 pgvector/pgvector:pg17
 docker exec packconnect-test-pg psql -U postgres -c "CREATE DATABASE packconnect_bench"
 docker exec packconnect-test-pg psql -U postgres -d packconnect_bench -c "DO `$`$ BEGIN CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END `$`$; CREATE SCHEMA IF NOT EXISTS auth; CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY, email text, email_confirmed_at timestamptz);"
 

@@ -1,0 +1,54 @@
+.outside-filters {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px dashed #d1d5db;
+}
+
+.outside-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.outside-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.outside-arrow {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(17, 24, 39, 0.08);
+}
+
+.outside-arrow:hover:not(:disabled) {
+  border-color: #cc0000;
+  color: #cc0000;
+}
+
+.outside-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.outside-position {
+  margin: 0.75rem 0 0;
+  color: #6b7280;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .outside-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

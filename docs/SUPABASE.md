@@ -54,8 +54,16 @@ Supabase Auth UUIDs are omitted from public profile responses.
 
 Backend tests use isolated schemas on a dedicated local PostgreSQL database,
 not your connected project. Set `TEST_DATABASE_URL` to a localhost database with
-schema/role creation privileges and `sslmode=disable` for local testing. CI
-provides a PostgreSQL 17 service automatically.
+schema/role creation privileges and `sslmode=disable` for local testing. The
+database needs the pgvector extension available (used for meaning-based topic
+matching), so use the `pgvector/pgvector:pg17` Docker image rather than plain
+PostgreSQL, for example:
+
+```sh
+docker run -d --name packconnect-test-db -e POSTGRES_PASSWORD=postgres   -e POSTGRES_DB=packconnect_test -p 127.0.0.1:5432:5432 pgvector/pgvector:pg17
+```
+
+CI provides the same image automatically.
 
 ```sh
 TEST_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/packconnect_test?sslmode=disable' \
