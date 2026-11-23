@@ -70,6 +70,43 @@ class TopicMatchTests(unittest.TestCase):
         self.assertEqual(ranking.topic_match("interviews", None), 0.0)
 
 
+class MeaningMatchTests(unittest.TestCase):
+    def test_stretches_raw_similarity_to_zero_to_one(self):
+        self.assertEqual(ranking.meaning_match(ranking.MEANING_NO_MATCH), 0.0)
+        self.assertEqual(ranking.meaning_match(ranking.MEANING_STRONG_MATCH), 1.0)
+        middle = (ranking.MEANING_NO_MATCH + ranking.MEANING_STRONG_MATCH) / 2
+        self.assertAlmostEqual(ranking.meaning_match(middle), 0.5)
+
+    def test_values_outside_the_range_are_capped(self):
+        self.assertEqual(ranking.meaning_match(0.1), 0.0)
+        self.assertEqual(ranking.meaning_match(0.99), 1.0)
+
+    def test_unknown_similarity_stays_unknown(self):
+        self.assertIsNone(ranking.meaning_match(None))
+
+
+class CombinedTopicMatchTests(unittest.TestCase):
+    def test_meaning_rescues_different_wording(self):
+        # "interview prep" shares only "interview" with Maya's topics (0.5 by words).
+        self.assertEqual(ranking.combined_topic_match("interview prep", "Projects, interviews", 0.80), 1.0)
+
+    def test_shared_words_still_count_when_meaning_is_weak(self):
+        self.assertEqual(ranking.combined_topic_match("interview prep", "Interview prep", 0.40), 1.0)
+
+    def test_without_fingerprints_it_is_the_shared_words_match(self):
+        self.assertEqual(ranking.combined_topic_match("interview prep", "Projects, interviews"), 0.5)
+
+    def test_no_asked_topic_leaves_the_factor_out(self):
+        self.assertIsNone(ranking.combined_topic_match("", "Projects", 0.9))
+
+    def test_scoring_uses_meaning_for_the_topic_factor(self):
+        search = ranking.SearchRequest(courses=["CSC 510"], topic="job hunting")
+        related = ranking.AdvisorFacts(id=1, name="Sam", advice_topics="Resumes, career fairs",
+                                       topic_similarity=0.78)
+        result = ranking.score_advisor(search, related)
+        self.assertGreater(result.factors["topic"], 0.8)
+
+
 class MatchingTopicWordsTests(unittest.TestCase):
     def test_returns_the_covered_words_as_the_student_typed_them(self):
         self.assertEqual(ranking.matching_topic_words("Interview prep", "interviews, prep sessions"), ["interview", "prep"])

@@ -110,6 +110,39 @@ def topic_match(asked_topic, advisor_topics):
     return len(asked & _meaningful_words(advisor_topics)) / len(asked)
 
 
+# Meaning similarity between two topic fingerprints (see core/embeddings.py)
+# bunches up: unrelated topics still score about 0.55 and the same idea about
+# 0.80 or more. These two points stretch it to the 0-1 scale the factors use.
+MEANING_NO_MATCH = 0.55
+MEANING_STRONG_MATCH = 0.80
+
+# A topic counts as meeting the student's topic filter when its stretched
+# meaning match reaches this value, even without the exact words.
+MEANING_FILTER_THRESHOLD = 0.5
+
+
+def meaning_match(similarity):
+    """Stretch a raw meaning similarity to 0-1. Returns None when there is no similarity."""
+    if similarity is None:
+        return None
+    stretched = (similarity - MEANING_NO_MATCH) / (MEANING_STRONG_MATCH - MEANING_NO_MATCH)
+    return min(1.0, max(0.0, stretched))
+
+
+def combined_topic_match(asked_topic, advisor_topics, similarity=None):
+    """Topic factor using both shared words and meaning: whichever is higher.
+
+    Shared words catch exact terms; meaning catches different wording for the
+    same idea ("interview prep" and "interviews"). Without a similarity (no
+    fingerprints stored yet), this is the shared-words match alone.
+    """
+    words = topic_match(asked_topic, advisor_topics)
+    if words is None:
+        return None
+    meaning = meaning_match(similarity)
+    return words if meaning is None else max(words, meaning)
+
+
 def _blend_with_starting_value(observed_total, observed_count, starting_value, starting_weight):
     """Average real results together with a few imaginary typical ones (a Bayesian average).
 
@@ -165,6 +198,9 @@ class AdvisorFacts:
     rating_count: int = 0
     answered_requests: int = 0
     unanswered_requests: int = 0
+    # Meaning similarity between the advisor's topics and the searched topic,
+    # or None when it is not known (see combined_topic_match).
+    topic_similarity: float | None = None
 
 
 @dataclass(frozen=True)
@@ -189,7 +225,7 @@ def score_advisor(search, advisor, weights=RANKING_WEIGHTS):
     """
     factors = {
         "course": course_match(search.courses, advisor.completed_courses),
-        "topic": topic_match(search.topic, advisor.advice_topics),
+        "topic": combined_topic_match(search.topic, advisor.advice_topics, advisor.topic_similarity),
         "rating": rating_score(advisor.average_rating, advisor.rating_count),
         "response": response_score(advisor.answered_requests, advisor.unanswered_requests),
     }
