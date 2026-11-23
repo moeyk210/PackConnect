@@ -5,7 +5,7 @@ from pathlib import Path
 
 import app as portal
 from core.courses import normalize_code
-from tests.postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase, sign_in
 
 
 MIGRATION = (Path(__file__).resolve().parents[2] / "supabase" / "migrations"
@@ -49,8 +49,7 @@ class CourseCodeRegressionTests(PostgresTestCase):
         return response.get_json()["student"]
 
     def sign_in(self, student_id):
-        with self.client.session_transaction() as session:
-            session["student_id"] = student_id
+        sign_in(self.client, student_id)
 
     def test_course_is_stored_and_found_the_same_way_however_it_is_typed(self):
         student = self.register(completed_courses=["csc510", " CSC 510 ", "CSC-540"])

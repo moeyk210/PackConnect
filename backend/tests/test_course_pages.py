@@ -6,7 +6,7 @@ from itertools import count
 from urllib.parse import quote
 
 import app as portal
-from tests.postgres_test_support import PostgresTestCase
+from tests.postgres_test_support import PostgresTestCase, sign_in
 
 SECRET_COMMENT = "A private remark that must never appear on a course page."
 
@@ -66,8 +66,7 @@ class CoursePageTestCase(PostgresTestCase):
     def page(self, code="CSC 510", viewer=None):
         client = portal.app.test_client()
         if viewer:
-            with client.session_transaction() as session:
-                session["student_id"] = viewer
+            sign_in(client, viewer)
         return client.get(f"/api/courses/{quote(code, safe='')}")
 
     def body(self, code="CSC 510", viewer=None):
@@ -236,8 +235,7 @@ class CourseRatingFeedbackTests(PostgresTestCase):
                 db.execute("INSERT INTO chat_messages (request_id, sender_id, body) VALUES (%s, %s, 'Hello')",
                            (self.request_id, self.ids[author]))
         self.client = portal.app.test_client()
-        with self.client.session_transaction() as session:
-            session["student_id"] = self.ids["asker"]
+        sign_in(self.client, self.ids["asker"])
 
     def submit(self, **fields):
         return self.client.post(f"/api/requests/{self.request_id}/feedback",
