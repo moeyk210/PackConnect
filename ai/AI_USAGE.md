@@ -54,3 +54,4 @@ original Project 2 team is not tracked here.
 | 02 | [Advice outcomes and reputation (issue #2)](artifacts/02-advice-outcomes-reputation.md) | Moe Ko | 2026-11-12 |
 | 03 | [Smart matching and ranking (issue #3)](artifacts/03-smart-matching-ranking.md) | Morgan Simon | 2026-11-22 |
 | 05 | [Real-time messaging (issue #5)](artifacts/05-real-time-messaging.md) | Ethan Goodman | 2026-11-18 |
+| 06 | [Development seed data and end-to-end tests](artifacts/06-dev-seed-data-and-tests.md) | Ethan Goodman | 2026-11-23 |
