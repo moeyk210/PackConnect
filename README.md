@@ -19,7 +19,11 @@
 
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23543676.svg)](https://doi.org/10.5281/zenodo.23543676)
-  
+
+
+
+https://github.com/user-attachments/assets/03d93b60-23e5-4d8d-a226-e6f5326d4a65
+
 
 
 PackConnect is a student-to-student peer-advice discovery portal being developed for NC State University. Students can search by course code to find peers who have completed a course and volunteered to share advice.
