@@ -30,7 +30,7 @@ advisor is now paused or full. Search results refresh when you run a search.
 Before running the updated backend against your configured database:
 
 ```sh
-.venv/bin/python backend/migrate.py
+.venv/bin/python backend/scripts/migrate.py
 ```
 
 On Windows, use `.\.venv\Scripts\python.exe`. Restart the backend afterward.
@@ -69,7 +69,7 @@ Run `npm test`, `npm run lint`, `npm run build`, and the Prettier check from
 `frontend/`. Run the backend suite with a dedicated local PostgreSQL database
 as described in [Supabase verification](SUPABASE.md#verification).
 
-`backend/test_availability.py` covers settings, validation, ownership, pause
+`backend/tests/test_availability.py` covers settings, validation, ownership, pause
 expiry, search filtering, limits, unlimited capacity, preserved connections,
 completion and history, concurrent last-slot requests, and opposite-direction
 requests. Frontend interaction tests cover saving and clearing settings,

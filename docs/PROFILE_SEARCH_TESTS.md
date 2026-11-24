@@ -14,13 +14,13 @@ including the profile validation fix exposed by the new regression tests.
 | Combined filters, empty results, advising availability | Near-match fixtures, contradictory/empty queries, and availability/toggle tests |
 | Rejected writes leave data unchanged | Rejected edits compare exact stored profile and course rows, including course row IDs; invalid registration and duplicate-email rollback tests verify storage counts |
 | Isolated temporary databases | A dedicated localhost PostgreSQL test database gives each test a unique temporary schema; cleanup drops the schema; the helper rejects non-local test URLs |
-| Replace/remove empty placeholder | Removed the empty `frontend/test_profile_editing.py`; executable API tests live under `backend/` and are discovered by CI |
+| Replace/remove empty placeholder | Removed the empty `frontend/test_profile_editing.py`; executable API tests live under `backend/tests/` and are discovered by CI |
 
 ## Coverage
 
 | Behavior | Automated evidence |
 | --- | --- |
-| Program, year, skills, and advice topics independently | Four dedicated tests in `backend/test_search.py`, including mixed case, trimmed input, and partial text matches |
+| Program, year, skills, and advice topics independently | Four dedicated tests in `backend/tests/test_search.py`, including mixed case, trimmed input, and partial text matches |
 | All filters combined | Near-matching fictional profiles ensure every filter is applied; contradictory combinations return no matches |
 | Completed-course search | Case/outer-whitespace normalization; a current course alone cannot satisfy completed-course search |
 | Advising availability | Default and explicit true exclude opted-out profiles; `available=false` includes both availability states |

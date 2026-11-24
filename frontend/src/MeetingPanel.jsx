@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, json } from './messagingApi'
+import { useRealtimeConnected, useRealtimeEvent } from './realtime'
 
 export default function MeetingPanel({ requestId, user, active }) {
   const [meetings, setMeetings] = useState([])
@@ -7,6 +8,7 @@ export default function MeetingPanel({ requestId, user, active }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [version, setVersion] = useState(0)
+  const connected = useRealtimeConnected()
   useEffect(() => {
     const controller = new AbortController()
     let timer
@@ -19,7 +21,9 @@ export default function MeetingPanel({ requestId, user, active }) {
       } catch (err) {
         if (!controller.signal.aborted) setError(err.message)
       } finally {
-        if (!controller.signal.aborted) timer = setTimeout(load, 10000)
+        // Polling is only the fallback while the socket is down.
+        if (!controller.signal.aborted && !connected)
+          timer = setTimeout(load, 10000)
       }
     }
     load()
@@ -27,7 +31,11 @@ export default function MeetingPanel({ requestId, user, active }) {
       controller.abort()
       clearTimeout(timer)
     }
-  }, [requestId, version])
+  }, [requestId, version, connected])
+  // A pushed change restarts the effect, which aborts any load in flight.
+  useRealtimeEvent('meeting', (event) => {
+    if (event.request_id === requestId) setVersion((v) => v + 1)
+  })
   async function act(id, status) {
     if (busy) return
     setBusy(true)

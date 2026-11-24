@@ -5,7 +5,7 @@
 Apply migrations, then restart Flask and refresh the frontend:
 
 ```sh
-.venv/bin/python backend/migrate.py
+.venv/bin/python backend/scripts/migrate.py
 ```
 
 Use the Python executable for your backend virtual environment. The migration
@@ -29,7 +29,7 @@ available, and a new request may be sent after cancellation or expiration.
 For notification records to be generated while nobody is using the app, schedule:
 
 ```sh
-.venv/bin/python backend/expire_requests.py
+.venv/bin/python backend/scripts/expire_requests.py
 ```
 
 Run this periodically using the deployment's scheduler (for example, every five

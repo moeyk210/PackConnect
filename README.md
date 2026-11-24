@@ -1,25 +1,29 @@
 # PackConnect — Peer Advice Portal
 
-[![Build](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/build.yml/badge.svg?branch=development)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/build.yml?query=branch%3Adevelopment)
+[![Build](https://github.com/moeyk210/PackConnect/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/moeyk210/PackConnect/actions/workflows/build.yml?query=branch%3Amain)
 
-[![Tests and Quality](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/ci.yml?branch=development&label=Tests%20%26%20Quality)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/ci.yml?query=branch%3Adevelopment)
+[![Tests and Quality](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/ci.yml?branch=main&label=Tests%20%26%20Quality)](https://github.com/moeyk210/PackConnect/actions/workflows/ci.yml?query=branch%3Amain)
 
-[![Coverage](https://codecov.io/gh/KrishnaAttili10/PackConnect/branch/development/graph/badge.svg)](https://app.codecov.io/gh/KrishnaAttili10/PackConnect/tree/development)
-
-
-[![Code Style](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/style.yml?branch=development&label=Code%20Style)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/style.yml?query=branch%3Adevelopment)
+[![Coverage](https://codecov.io/gh/moeyk210/PackConnect/branch/main/graph/badge.svg)](https://app.codecov.io/gh/moeyk210/PackConnect/tree/main)
 
 
-
-[![Formatter](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/formatter.yml?branch=development&label=Formatter)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/formatter.yml?query=branch%3Adevelopment)
-
-
-[![Syntax](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/syntax.yml?branch=development&label=Syntax)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/syntax.yml?query=branch%3Adevelopment)
+[![Code Style](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/style.yml?branch=main&label=Code%20Style)](https://github.com/moeyk210/PackConnect/actions/workflows/style.yml?query=branch%3Amain)
 
 
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23543676.svg)](https://doi.org/10.5281/zenodo.23543676)
-  
+[![Formatter](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/formatter.yml?branch=main&label=Formatter)](https://github.com/moeyk210/PackConnect/actions/workflows/formatter.yml?query=branch%3Amain)
+
+
+[![Syntax](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/syntax.yml?branch=main&label=Syntax)](https://github.com/moeyk210/PackConnect/actions/workflows/syntax.yml?query=branch%3Amain)
+
+
+
+[![Original project DOI](https://img.shields.io/badge/Original%20project%20%28Project%202%29%20DOI-10.5281%2Fzenodo.23543676-blue)](https://doi.org/10.5281/zenodo.23543676)
+
+
+
+https://github.com/user-attachments/assets/03d93b60-23e5-4d8d-a226-e6f5326d4a65
+
 
 
 PackConnect is a student-to-student peer-advice discovery portal being developed for NC State University. Students can search by course code to find peers who have completed a course and volunteered to share advice.
@@ -27,6 +31,75 @@ PackConnect is a student-to-student peer-advice discovery portal being developed
 > **Project status:** Early working prototype. The application includes account registration and persistent student profiles. Login uses password verification and session cookies. All application data persists in Supabase PostgreSQL; acceptance unlocks private two-person chat. Course histories remain self-reported.
 
 See the [Step 1 baseline audit](docs/STEP_1_AUDIT.md) for verified behavior, limitations, and outstanding work.
+
+## Project 3: what we changed
+
+PackConnect started as another team's Project 2,
+[KrishnaAttili10/PackConnect](https://github.com/KrishnaAttili10/PackConnect), by
+Krishna Attili, Sachith B, Atharva Tijare and Emma Saarinen. We forked it at
+commit `5d635c1` (October 29, 2026), the last commit on their `main`. Everything
+from `a313141` onward is our work:
+[compare the fork point with our `main`](https://github.com/moeyk210/PackConnect/compare/5d635c1...main).
+
+### What we inherited
+
+Registration and sign-in, student profiles, course search with filters, advisor
+availability limits, advice requests with cancellation and expiry, private chat
+that refreshed every three seconds, in-app notifications, a conversation inbox,
+block and report tools with moderation, password recovery, meeting proposals,
+and course-code suggestions drawn from students' own course histories. It had
+128 backend and 52 frontend tests, all passing in CI.
+
+### What we added
+
+| Milestone | Issue / PR | Lead | What works now that did not before |
+| --- | --- | --- | --- |
+| Advice outcomes and reputation | [#2](https://github.com/moeyk210/PackConnect/issues/2) / [#10](https://github.com/moeyk210/PackConnect/pull/10) | Moe Ko | Rate a conversation; advisor rating, students helped and response rate on search cards and profiles; the M0 eval and demo seed. See [feedback and reputation](#advice-feedback-reputation-and-m0-eval). |
+| Smart matching and ranking | [#3](https://github.com/moeyk210/PackConnect/issues/3) / [#14](https://github.com/moeyk210/PackConnect/pull/14) | Morgan Simon | Search ranked by fit instead of A-Z, near misses under "Outside your filters", "Recommended for you", and advice topics matched by meaning with a local model and pgvector. See [smart matching](docs/SMART_MATCHING.md). |
+| Course hub and catalog | [#4](https://github.com/moeyk210/PackConnect/issues/4) / [#15](https://github.com/moeyk210/PackConnect/pull/15) | Savanah Hendzel | A 162-course CSC catalog, one stored form for every course code, autocomplete by code or title, and course pages with ranked advisors and workload and difficulty ratings. See [course pages](docs/COURSE_PAGES.md). |
+| Real-time messaging | [#5](https://github.com/moeyk210/PackConnect/issues/5) / [#11](https://github.com/moeyk210/PackConnect/pull/11), [#16](https://github.com/moeyk210/PackConnect/pull/16) | Ethan Goodman | Chat, notifications, requests, the inbox and meetings update over WebSockets instead of polling, with read receipts, typing indicators and server-side session revocation. See [real-time messaging](docs/REALTIME_MESSAGING.md). |
+
+Supporting work: the backend reorganized into `core/`, `features/`, `scripts/`
+and `tests/` ([#7](https://github.com/moeyk210/PackConnect/pull/7)), varied
+development seed data and end-to-end tests
+([#17](https://github.com/moeyk210/PackConnect/pull/17)), and fixes
+([#8](https://github.com/moeyk210/PackConnect/pull/8),
+[#9](https://github.com/moeyk210/PackConnect/pull/9),
+[#12](https://github.com/moeyk210/PackConnect/pull/12),
+[#13](https://github.com/moeyk210/PackConnect/pull/13)). AI use is logged in
+[ai/AI_USAGE.md](ai/AI_USAGE.md).
+
+### How we know the old parts still work
+
+| Tests | At the fork (`5d635c1`) | Now |
+| --- | --- | --- |
+| Backend | 128 | 484 |
+| Frontend | 52 | 164 |
+
+Every inherited test file is still in the suite, and CI runs all of them on
+every push. Most edits to inherited tests follow the backend reorganization
+(import paths), real server-side sign-in, or new response fields. Five
+inherited tests for course-code suggestions were replaced when suggestions moved
+from students' course histories to the catalog
+([#15](https://github.com/moeyk210/PackConnect/pull/15)); 13 tests in
+`backend/tests/test_course_autocomplete.py` cover the new behavior.
+
+### M0
+
+The inherited project had no M0 eval; its own
+[baseline audit](docs/STEP_1_AUDIT.md) lists the M0 instrument as missing. Our
+claims and the instruments that measure them:
+
+| Claim | Instrument | Result |
+| --- | --- | --- |
+| More than 70% of accepted connections are rated helpful | `backend/scripts/m0_eval.py` (`--check` exits 1 if the claim fails) | 75.0% (9 of 12) on the demo seed: pass |
+| Ranked search puts the advisor who accepted in the top 3 more often than A-Z order | `backend/scripts/ranking_eval.py` | 42.9% vs 17.9% (24 vs 10 of 56) on a simulated semester |
+| Meaning-based topic matching finds the right advisor more often than shared words | `backend/scripts/topic_match_eval.py` | 86.7% vs 46.7% (26 vs 14 of 30 hand-written cases) |
+| Real-time push delivers chat faster than polling | `backend/scripts/benchmark_messaging.py` | Median 1444 ms to 50 ms; an idle open chat goes from about 45 requests a minute to 0 |
+
+These results come from demo, simulated or hand-written data, not real
+students. `m0_eval.py` and `ranking_eval.py` read whichever database they are
+given, so they can measure real students once there is enough history.
 
 ## Current features
 
@@ -40,7 +113,9 @@ See the [Step 1 baseline audit](docs/STEP_1_AUDIT.md) for verified behavior, lim
 - View a student's profile, including program, year, bio, interests, and completed courses (as returned by the API).
 - Store accounts, profiles, courses, requests, chat, and notifications in Supabase PostgreSQL.
 - Get in-app bell notifications for incoming requests, request decisions, and new chat messages. Read/unread state is saved per account.
-- Chat privately after acceptance. Both participants can send messages of up to 2,000 characters, and conversations persist across visits. Open chats refresh every three seconds.
+- Chat privately after acceptance. Both participants can send messages of up to 2,000 characters, and conversations persist across visits. Messages, notifications, requests, the inbox, and meetings update in real time over WebSockets, with "Seen" read receipts and typing indicators. If the live connection drops, the app falls back to polling and catches up on reconnect. See [real-time messaging](docs/REALTIME_MESSAGING.md).
+- Logging out ends that browser's session on the server, so a copied session cookie stops working. Other signed-in devices stay signed in.
+- Rate a conversation from 1 to 10, say whether the advice was helpful, and add an optional comment, once both people have sent a message. Search cards and profiles show each advisor's average rating, students helped, and response rate. See [feedback, reputation, and the M0 eval](#advice-feedback-reputation-and-m0-eval).
 
 New request and community tools include cancellation, seven-day expiration,
 a conversation inbox, block/report controls with moderator review, password
@@ -61,9 +136,14 @@ including SMTP configuration and moderator assignment.
 ```text
 PackConnect/
 ├── backend/
-│   ├── app.py             # Flask API and database initialization
-│   ├── database.py        # Transactional Supabase PostgreSQL connections
-│   └── migrate.py         # Explicit versioned schema migrations
+│   ├── app.py             # Flask API entry point and database initialization
+│   ├── requirements.txt
+│   ├── core/              # Shared infrastructure: database connections, session identity
+│   ├── features/          # Feature modules: messaging, availability, lifecycle,
+│   │                      #   community, meetings, password recovery
+│   ├── scripts/           # Command-line tasks: migrations, request expiry,
+│   │                      #   demo seed data, M0 eval
+│   └── tests/             # Backend test suite and shared test support
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx        # Search and student profile UI
@@ -99,7 +179,7 @@ git --version
 ### 1. Clone the repository
 
 ```powershell
-git clone https://github.com/kkattili_ncstate/PackConnect.git
+git clone https://github.com/moeyk210/PackConnect.git
 cd PackConnect
 ```
 
@@ -125,7 +205,7 @@ Configure `backend/.env` using [the Supabase setup instructions](docs/SUPABASE.m
 Apply migrations, then start Flask:
 
 ```powershell
-python backend/migrate.py
+python backend/scripts/migrate.py
 python backend/app.py
 ```
 
@@ -136,6 +216,11 @@ Running on http://127.0.0.1:5000
 ```
 
 Flask connects to Supabase; it creates no local database or sample profiles. Leave this terminal running.
+
+`backend/app.py` serves the API and the real-time Socket.IO channel through
+Flask-SocketIO. After pulling changes, reinstall `backend/requirements.txt`,
+apply migrations, and restart both Flask and Vite (Vite proxies `/socket.io`).
+After the server-side session upgrade, everyone signs in again once.
 
 > **PowerShell note:** If script execution is blocked when activating the virtual environment, you can skip activation and run `.\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt` followed by `.\.venv\Scripts\python.exe backend/app.py`.
 
@@ -173,12 +258,15 @@ Open that URL in your browser. **The frontend is the actual website; port 5000 s
 | --- | --- | --- |
 | GET | `/api/health` | Returns `{"status":"ok"}` |
 | POST | `/api/auth/register` | Creates an account and student profile; returns 201, 400 for invalid input, or 409 for a duplicate email |
-| GET | `/api/students/search?course=CSC%20510` | Finds opted-in students who completed the specified course |
+| GET | `/api/students/search?course=CSC%20510` | Ranks students who completed the course, best fit first, with near misses listed separately and 20 per page. See [smart matching](docs/SMART_MATCHING.md) |
+| GET | `/api/recommendations` | Signed-in only: up to five advisors for your current courses, best fit first. See [smart matching](docs/SMART_MATCHING.md#recommended-for-you) |
 | GET | `/api/courses?q=CSC` | Suggests up to ten distinct completed-course codes matching a prefix; case, spaces, and hyphens are ignored |
 | GET | `/api/students/1` | Retrieves a student's full profile |
 | GET / POST | `/api/requests` | List your requests or create one for another registered advisor |
 | PATCH | `/api/requests/1` | Recipient accepts/declines a pending request |
 | GET / POST | `/api/requests/1/messages` | Read/send messages after acceptance; participants only |
+| GET / POST | `/api/requests/1/feedback` | Read your own feedback and whether you can rate; submit feedback once per request |
+| GET | `/api/students/1/reputation` | An advisor's aggregate rating, helpful %, students helped, and response rate |
 
 Quick browser checks:
 
@@ -188,7 +276,7 @@ Quick browser checks:
 
 ### Account registration
 
-Apply migrations with `python backend/migrate.py`, then restart the backend. Click **Create account** in the frontend header. Enter your name, email, a password of 12–128 characters, program, and year. Optional fields include bio, interests, and comma-separated completed courses. Opt in to advising to appear in searches for those courses.
+Apply migrations with `python backend/scripts/migrate.py`, then restart the backend. Click **Create account** in the frontend header. Enter your name, email, a password of 12–128 characters, program, and year. Optional fields include bio, interests, and comma-separated completed courses. Opt in to advising to appear in searches for those courses.
 
 The registration API accepts `name`, `email`, `password`, `program`, and `year`, plus optional `bio`, `interests`, `completed_courses` (an array of course codes), and `willing_to_advise` (a boolean, defaulting to false). Email uniqueness ignores case. Account and profile creation are transactional. After registration, sign in on the login page. Email verification is not yet implemented. Course completion is self-reported.
 
@@ -226,16 +314,13 @@ Use the direct virtual-environment Python commands in the backend setup section 
 
 ## Working with Git
 
-Before starting work, pull the latest changes:
+All work branches from `dev`, and pull requests target `dev`, never `main`. At the end of the project, `dev` is merged into `main` in a single pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, checks, and pull request expectations.
+
+Before starting work, fetch the latest changes and create a feature branch from `origin/dev`:
 
 ```powershell
-git pull origin main
-```
-
-Create a feature branch for your changes:
-
-```powershell
-git switch -c feature/short-description
+git fetch origin
+git switch -c feature/short-description origin/dev
 ```
 
 After making changes:
@@ -246,24 +331,24 @@ git commit -m "Describe your change"
 git push -u origin feature/short-description
 ```
 
-Open a pull request on GitHub for team review before merging into `main`.
+Open a pull request into `dev` on GitHub. A teammate reviews it before it is merged.
 
 ## Planned improvements
 
 - Email verification and login rate limiting (password recovery has its own rate limits).
 - Course completion reporting and richer course discovery.
-- Message read receipts, notifications, and conversation management.
+- Conversation management (archiving, message deletion) and settings to turn off read receipts or typing indicators.
 - Improved testing, validation, privacy, and deployment configuration.
 
 ---
 
-**Repository:** https://github.com/kkattili_ncstate/PackConnect
+**Repository:** https://github.com/moeyk210/PackConnect
 
 ### Supabase connection setup
 
 Set `SUPABASE_DB_URL` in `backend/.env` to the PostgreSQL **Session pooler**
 connection string from Supabase's Connect panel, including the database password.
-Run `python backend/migrate.py` before starting Flask. `SUPABASE_URL` and
+Run `python backend/scripts/migrate.py` before starting Flask. `SUPABASE_URL` and
 `SUPABASE_SECRET_KEY` configure the optional SDK used by live integration tests;
 they are separate from the database connection string.
 
@@ -330,8 +415,10 @@ Declined requests stay in history, and a new request may be sent. Accepted or
 declined decisions cannot be reversed through the API. Either participant can mark accepted advice completed to release capacity and retain read-only history. Turning off future advice
 availability does not delete existing connections or messages.
 
-The Requests list refreshes on navigation and every eight seconds. Open chats
-poll every three seconds and fetch history in batches of 100. Requests/messages
+While the real-time connection is up, the Requests list, inbox, and open chats
+update when something changes, without polling. If it drops, they fall back to
+polling (requests and inbox every eight seconds, chats every three seconds) and
+catch up on reconnect. History is fetched in batches of 100. Requests/messages
 survive reloads and backend restarts; sign in again if a development restart
 invalidates your session. See [messaging API and test instructions](docs/MESSAGING.md).
 
@@ -351,7 +438,8 @@ and its route. After pulling these changes, install `backend/requirements.txt`
 and restart Flask. No additional database migration is needed for this
 performance update. See [verification details](docs/NOTIFICATION_PERFORMANCE.md).
 
-Notifications refresh every five seconds while the app is open. No browser
+Notifications arrive in real time while the app is open, and are polled every
+five seconds only if the live connection drops. No browser
 permission is needed; these are in-app alerts, not email or operating-system
 push notifications. Apply migrations before restarting Flask to prepare notification storage.
 Existing pending requests and completed decisions are backfilled once without
@@ -374,3 +462,81 @@ fallback. Supabase users are visible in search and can receive requests before
 their first app login. After signing in, they can accept/decline, chat, edit their
 own profile, and read notifications using the same Flask session flow. Existing
 Flask accounts continue to work. No new database migration is needed.
+
+### Advice feedback, reputation and M0 eval
+
+Apply migrations before restarting Flask (`python backend/scripts/migrate.py`).
+
+**Feedback.** Once a request is accepted and both people have sent at least one
+message, the chat shows **Rate this conversation**: a rating from 1 to 10,
+whether the advice was helpful, and an optional comment of up to 500
+characters. Each participant can rate a request once and can't change it
+afterwards; their own feedback is then shown read-only. Requests that are
+pending, declined, cancelled, expired, or closed by a block can't be rated.
+
+**Reputation.** Search cards and profiles show an advisor's average rating,
+number of students helped, and response rate; profiles also show the helpful
+percentage. Only the asking student's rating counts; an advisor's rating of a
+student never affects the advisor's own score. The response rate divides
+answered requests (accepted, declined, completed) by those that were due an
+answer (adding expired requests and pending requests past their deadline).
+Reputation never includes comments or who gave a rating. The rules are
+documented in `backend/features/reputation.py`.
+
+**M0 eval.** Our M0 claim for this feature: *more than 70% of accepted
+connections are rated helpful by the student who asked.* Connections that were
+never rated count against the claim. The eval only reads the database:
+
+```powershell
+python backend/scripts/m0_eval.py            # uses SUPABASE_DB_URL from backend/.env
+python backend/scripts/m0_eval.py --check    # exit status 1 unless the claim is met
+```
+
+To see it on demo data with a known answer, seed a throwaway local database.
+The seed script refuses non-local databases unless you pass `--allow-remote`,
+so fictional data can't end up in your team's Supabase project by accident.
+
+```powershell
+docker run --rm -d --name packconnect-demo -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=packconnect_demo -p 127.0.0.1:54330:5432 postgres:17
+$demo = "postgresql://postgres:postgres@127.0.0.1:54330/packconnect_demo?sslmode=disable"
+python backend/scripts/seed_demo.py --database-url $demo
+python backend/scripts/m0_eval.py --database-url $demo
+```
+
+Expected output:
+
+```text
+M0: 75.0% of accepted connections were rated helpful (9 of 12)
+    Rated: 10 of 12 connections (83.3%); 9 of 10 ratings say helpful (90.0%)
+    Claim: more than 70% of accepted connections rated helpful -> PASS
+```
+
+The same database can run the whole app with fictional students: set
+`$env:SUPABASE_DB_URL = $demo` before `python backend/app.py`, then sign in as
+`maya@demo.packconnect.test` (or any other seeded student) with the password
+`packconnect-demo-2026`. Stop it with `docker stop packconnect-demo`, which also
+deletes the demo data.
+
+### Development seed data
+
+To try search, filters, course pages and recommendations on varied data, seed a
+throwaway local database with `backend/scripts/seed_dev_data.py`. It adds 22
+fictional advisors across 31 courses in four subjects (CSC, MA, ST, ECE), with
+different programs, years, skills, advice topics, availability (open, unlimited,
+paused, full, not advising) and review histories, plus 8 students who are not
+advising, one profile without an account, and one block. It also loads the
+course catalog and creates topic fingerprints with the local model. It refuses
+non-local databases.
+
+```powershell
+docker run --rm -d --name packconnect-dev -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=packconnect_dev -p 127.0.0.1:54331:5432 pgvector/pgvector:pg17
+$dev = "postgresql://postgres:postgres@127.0.0.1:54331/packconnect_dev?sslmode=disable"
+python backend/scripts/seed_dev_data.py --database-url $dev
+```
+
+Set `$env:SUPABASE_DB_URL = $dev` before `python backend/app.py`, then sign in as
+`riley@dev.packconnect.test` (or any other seeded student) with the password
+`packconnect-dev-2026`. Good searches to try: `CSC 510` with the topic
+"interview prep", `CSC 522` (Isabela is only taking it, so she is not a match),
+and `MA 305` (no catalog page). `backend/tests/test_seed_dev_data.py` lists the
+expected result for each flow.

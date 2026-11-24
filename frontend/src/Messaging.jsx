@@ -1,8 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 import { api, json } from './messagingApi'
 import './Messaging.css'
 import MeetingPanel from './MeetingPanel'
 import { ReportForm } from './Community'
+import {
+  useRealtimeConnected,
+  useRealtimeEmit,
+  useRealtimeEvent,
+} from './realtime'
+import { ConversationFeedback } from './FeedbackPanel'
 
 export function ConnectionRequestForm({
   student,
@@ -263,6 +269,131 @@ export function RequestInbox({
   )
 }
 
+const TYPING_SIGNAL_MS = 2000
+const TYPING_VISIBLE_MS = 5000
+// Consecutive messages from one sender within this gap form a visual run.
+const RUN_GAP_MS = 5 * 60 * 1000
+
+function sameRun(a, b) {
+  return (
+    Boolean(a && b) &&
+    a.sender_id === b.sender_id &&
+    Math.abs(new Date(b.created_at) - new Date(a.created_at)) < RUN_GAP_MS
+  )
+}
+
+function runPosition(previous, item, next) {
+  const joinsPrevious = sameRun(previous, item)
+  const joinsNext = sameRun(item, next)
+  if (joinsPrevious && joinsNext) return 'middle'
+  if (joinsPrevious) return 'last'
+  if (joinsNext) return 'first'
+  return 'single'
+}
+
+// A "more actions" menu button (WAI-ARIA APG menu button pattern): Enter or
+// Space opens it and focuses the first item, arrows move between items,
+// Escape closes it and returns focus to the button, Tab closes it.
+function MessageActions({ label, actions }) {
+  const [open, setOpen] = useState(false)
+  const button = useRef(null)
+  const menu = useRef(null)
+  const buttonId = useId()
+  const menuId = useId()
+  useEffect(() => {
+    if (!open) return undefined
+    menu.current?.querySelector('[role="menuitem"]')?.focus()
+    function outside(event) {
+      if (
+        !menu.current?.contains(event.target) &&
+        !button.current?.contains(event.target)
+      )
+        setOpen(false)
+    }
+    document.addEventListener('pointerdown', outside)
+    return () => document.removeEventListener('pointerdown', outside)
+  }, [open])
+  function onMenuKeyDown(event) {
+    const items = [...menu.current.querySelectorAll('[role="menuitem"]')]
+    const index = items.indexOf(document.activeElement)
+    const focusItem = (next) =>
+      items[(next + items.length) % items.length]?.focus()
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setOpen(false)
+      button.current?.focus()
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      focusItem(index + 1)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      focusItem(index - 1)
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      focusItem(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      focusItem(items.length - 1)
+    } else if (event.key === 'Tab') {
+      setOpen(false)
+    }
+  }
+  return (
+    <div className="message-actions">
+      <button
+        ref={button}
+        id={buttonId}
+        type="button"
+        className="message-actions-button"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault()
+            setOpen(true)
+          }
+        }}
+      >
+        <span aria-hidden="true">⋯</span>
+      </button>
+      {open && (
+        <div
+          ref={menu}
+          id={menuId}
+          role="menu"
+          aria-labelledby={buttonId}
+          className="message-menu"
+          onKeyDown={onMenuKeyDown}
+        >
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              onClick={() => {
+                setOpen(false)
+                action.onSelect()
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function mergeMessages(previous, incoming) {
+  return [
+    ...new Map([...previous, ...incoming].map((m) => [m.id, m])).values(),
+  ].sort((a, b) => a.id - b.id)
+}
+
 export function Conversation({ requestId, user }) {
   const [record, setRecord] = useState(null)
   const [messages, setMessages] = useState([])
@@ -272,46 +403,138 @@ export function Conversation({ requestId, user }) {
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
   const [reportedMessage, setReportedMessage] = useState(null)
+  const [peerRead, setPeerRead] = useState(0)
   const log = useRef(null)
+  const connected = useRealtimeConnected()
+  // Only fetched rows advance the cursor. Pushed rows are merged by ID, so a
+  // message missed while disconnected can never fall behind the cursor.
+  const cursor = useRef({ requestId, id: 0 })
+  const syncNow = useRef(null)
   useEffect(() => {
+    if (cursor.current.requestId !== requestId)
+      cursor.current = { requestId, id: 0 }
     const controller = new AbortController()
-    let cursor = 0
     let timer
-    async function poll() {
+    let running = false
+    let again = false
+    async function sync() {
+      if (running) {
+        again = true
+        return
+      }
+      running = true
+      clearTimeout(timer)
       try {
-        const data = await api(
-          `/api/requests/${requestId}/messages?after_id=${cursor}`,
-          { signal: controller.signal },
-        )
-        if (controller.signal.aborted) return
-        setRecord(data.request)
-        setError('')
-        if (data.messages.length) {
-          cursor = data.messages[data.messages.length - 1].id
-          setMessages((previous) =>
-            [
-              ...new Map(
-                [...previous, ...data.messages].map((m) => [m.id, m]),
-              ).values(),
-            ].sort((a, b) => a.id - b.id),
+        let data
+        do {
+          data = await api(
+            `/api/requests/${requestId}/messages?after_id=${cursor.current.id}`,
+            { signal: controller.signal },
           )
-        }
+          if (controller.signal.aborted) return
+          setRecord(data.request)
+          setError('')
+          setPeerRead((read) => Math.max(read, data.peer_last_read_id ?? 0))
+          if (data.messages.length) {
+            cursor.current.id = data.messages[data.messages.length - 1].id
+            setMessages((previous) => mergeMessages(previous, data.messages))
+          }
+        } while (data.has_more)
         setLoading(false)
-        timer = setTimeout(poll, data.has_more ? 0 : 3000)
+        // Polling is only the fallback while the socket is down.
+        if (!connected) timer = setTimeout(sync, 3000)
       } catch (err) {
         if (!controller.signal.aborted) {
           setError(err.message)
           setLoading(false)
-          timer = setTimeout(poll, 5000)
+          timer = setTimeout(sync, 5000)
+        }
+      } finally {
+        running = false
+        if (again && !controller.signal.aborted) {
+          again = false
+          sync()
         }
       }
     }
-    poll()
+    syncNow.current = sync
+    // Runs on open, and on every (re)connect to backfill anything missed.
+    sync()
     return () => {
       controller.abort()
       clearTimeout(timer)
+      syncNow.current = null
     }
-  }, [requestId])
+  }, [requestId, connected])
+  // Messages count as read only while this tab is visible; a hidden tab marks
+  // them read when the student comes back.
+  const unreadWhileHidden = useRef(0)
+  async function markRead(messageId) {
+    if (document.visibilityState !== 'visible') {
+      unreadWhileHidden.current = Math.max(unreadWhileHidden.current, messageId)
+      return
+    }
+    try {
+      await api(
+        `/api/requests/${requestId}/read`,
+        json('POST', { through_id: messageId }),
+      )
+    } catch {
+      // Not critical: the next history fetch records the read position too.
+    }
+  }
+  const markReadOnReturn = useEffectEvent(() => {
+    if (document.visibilityState !== 'visible' || !unreadWhileHidden.current)
+      return
+    const messageId = unreadWhileHidden.current
+    unreadWhileHidden.current = 0
+    markRead(messageId)
+  })
+  useEffect(() => {
+    const onVisibilityChange = () => markReadOnReturn()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () =>
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [])
+  // Typing: send at most one signal per 2 s; show the peer's for 5 s after
+  // their latest signal, or until their message arrives.
+  const emit = useRealtimeEmit()
+  const lastTypingSignal = useRef(0)
+  const [peerTyping, setPeerTyping] = useState(false)
+  const peerTypingTimer = useRef(null)
+  useEffect(() => () => clearTimeout(peerTypingTimer.current), [])
+  function signalTyping(value) {
+    const now = Date.now()
+    if (!value.trim() || now - lastTypingSignal.current < TYPING_SIGNAL_MS)
+      return
+    if (emit('typing', { request_id: requestId }))
+      lastTypingSignal.current = now
+  }
+  function stopPeerTyping() {
+    clearTimeout(peerTypingTimer.current)
+    setPeerTyping(false)
+  }
+  useRealtimeEvent('typing', (event) => {
+    if (event.request_id !== requestId || event.user_id === user.id) return
+    clearTimeout(peerTypingTimer.current)
+    setPeerTyping(true)
+    peerTypingTimer.current = setTimeout(stopPeerTyping, TYPING_VISIBLE_MS)
+  })
+  useRealtimeEvent('chat_message', (event) => {
+    if (event.request_id !== requestId) return
+    setMessages((previous) => mergeMessages(previous, [event.message]))
+    if (event.message.sender_id !== user.id) {
+      stopPeerTyping()
+      markRead(event.message.id)
+    }
+  })
+  useRealtimeEvent('request', (event) => {
+    if (event.request_id === requestId) syncNow.current?.() // status changed
+  })
+  useRealtimeEvent('read', (event) => {
+    if (event.request_id === requestId && event.reader_id !== user.id)
+      setPeerRead((read) => Math.max(read, event.last_read_id))
+  })
   useEffect(() => {
     if (log.current) log.current.scrollTop = log.current.scrollHeight
   }, [messages.length])
@@ -325,13 +548,7 @@ export function Conversation({ requestId, user }) {
         `/api/requests/${requestId}/messages`,
         json('POST', { body }),
       )
-      setMessages((previous) =>
-        [
-          ...new Map(
-            [...previous, data.message].map((m) => [m.id, m]),
-          ).values(),
-        ].sort((a, b) => a.id - b.id),
-      )
+      setMessages((previous) => mergeMessages(previous, [data.message]))
       setBody('')
     } catch (err) {
       setSendError(err.message)
@@ -342,6 +559,11 @@ export function Conversation({ requestId, user }) {
   const peerName =
     record &&
     (record.sender_id === user.id ? record.recipient_name : record.sender_name)
+  // "Seen" belongs on the student's own latest message only.
+  const lastOwnId = messages.reduce(
+    (latest, item) => (item.sender_id === user.id ? item.id : latest),
+    0,
+  )
   return (
     <section className="conversation">
       <a className="profile-back" href="#/app/requests">
@@ -396,37 +618,69 @@ export function Conversation({ requestId, user }) {
             {messages.length === 0 ? (
               <p className="empty-state">You're connected. Say hello!</p>
             ) : (
-              messages.map((item) => (
-                <article
-                  className={
-                    item.sender_id === user.id
-                      ? 'chat-bubble own'
-                      : 'chat-bubble'
-                  }
-                  key={item.id}
-                >
-                  <strong>
-                    {item.sender_id === user.id ? 'You' : peerName}
-                  </strong>
-                  <p>{item.body}</p>
-                  {item.sender_id !== user.id && (
-                    <button
-                      type="button"
-                      onClick={() => setReportedMessage(item)}
-                    >
-                      Report message
-                    </button>
-                  )}
-                  <time dateTime={item.created_at}>
-                    {new Date(item.created_at).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </time>
-                </article>
-              ))
+              messages.map((item, index) => {
+                const own = item.sender_id === user.id
+                const position = runPosition(
+                  messages[index - 1],
+                  item,
+                  messages[index + 1],
+                )
+                const endsRun = position === 'last' || position === 'single'
+                const sent = new Date(item.created_at)
+                return (
+                  <article
+                    className={`chat-row ${own ? 'own' : 'peer'} ${position}`}
+                    key={item.id}
+                  >
+                    <div className="chat-bubble">
+                      {/* Names are implied by side in a two-person chat;
+                          screen readers still hear who sent each message. */}
+                      <span className="visually-hidden">
+                        {own ? 'You sent' : `${peerName} sent`}
+                      </span>
+                      <p>{item.body}</p>
+                    </div>
+                    {!own && (
+                      <MessageActions
+                        label={`More actions for message from ${peerName}`}
+                        actions={[
+                          {
+                            label: 'Report message',
+                            onSelect: () => setReportedMessage(item),
+                          },
+                        ]}
+                      />
+                    )}
+                    {endsRun && (
+                      <p className="chat-meta">
+                        <time
+                          dateTime={item.created_at}
+                          title={sent.toLocaleString()}
+                        >
+                          {sent.toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </time>
+                        {item.id === lastOwnId && lastOwnId <= peerRead && (
+                          <span className="chat-seen">Seen</span>
+                        )}
+                      </p>
+                    )}
+                  </article>
+                )
+              })
             )}
           </div>
+          <p className="typing-indicator" aria-live="polite">
+            {peerTyping && peerName ? `${peerName} is typing…` : ''}
+          </p>
+          <ConversationFeedback
+            requestId={requestId}
+            record={record}
+            messages={messages}
+            peerName={peerName}
+          />
           {['completed', 'closed'].includes(record.status) ||
           record.contact_allowed === false ? (
             <p role="status">
@@ -445,7 +699,23 @@ export function Conversation({ requestId, user }) {
                 <textarea
                   id="chat-message"
                   value={body}
-                  onChange={(e) => setBody(e.target.value)}
+                  onChange={(e) => {
+                    setBody(e.target.value)
+                    signalTyping(e.target.value)
+                  }}
+                  onKeyDown={(e) => {
+                    // Enter sends and Shift+Enter adds a line. Enter that
+                    // confirms an input-method composition (e.g. Japanese
+                    // or Chinese input) must not send a half-typed message.
+                    if (
+                      e.key === 'Enter' &&
+                      !e.shiftKey &&
+                      !e.nativeEvent.isComposing
+                    ) {
+                      e.preventDefault()
+                      e.currentTarget.form.requestSubmit()
+                    }
+                  }}
                   maxLength={2000}
                   rows={3}
                   placeholder="Write a message..."
@@ -453,7 +723,10 @@ export function Conversation({ requestId, user }) {
                   required
                 />
                 <div>
-                  <span>{body.length}/2000 · Updates automatically</span>
+                  <span>
+                    {body.length}/2000 · Enter to send, Shift+Enter for a new
+                    line
+                  </span>
                   <button type="submit" disabled={sending || !body.trim()}>
                     {sending ? 'Sending...' : 'Send message'}
                   </button>
