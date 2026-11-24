@@ -1,24 +1,24 @@
 # PackConnect — Peer Advice Portal
 
-[![Build](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/build.yml/badge.svg?branch=development)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/build.yml?query=branch%3Adevelopment)
+[![Build](https://github.com/moeyk210/PackConnect/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/moeyk210/PackConnect/actions/workflows/build.yml?query=branch%3Amain)
 
-[![Tests and Quality](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/ci.yml?branch=development&label=Tests%20%26%20Quality)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/ci.yml?query=branch%3Adevelopment)
+[![Tests and Quality](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/ci.yml?branch=main&label=Tests%20%26%20Quality)](https://github.com/moeyk210/PackConnect/actions/workflows/ci.yml?query=branch%3Amain)
 
-[![Coverage](https://codecov.io/gh/KrishnaAttili10/PackConnect/branch/development/graph/badge.svg)](https://app.codecov.io/gh/KrishnaAttili10/PackConnect/tree/development)
-
-
-[![Code Style](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/style.yml?branch=development&label=Code%20Style)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/style.yml?query=branch%3Adevelopment)
+[![Coverage](https://codecov.io/gh/moeyk210/PackConnect/branch/main/graph/badge.svg)](https://app.codecov.io/gh/moeyk210/PackConnect/tree/main)
 
 
-
-[![Formatter](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/formatter.yml?branch=development&label=Formatter)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/formatter.yml?query=branch%3Adevelopment)
-
-
-[![Syntax](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/syntax.yml?branch=development&label=Syntax)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/syntax.yml?query=branch%3Adevelopment)
+[![Code Style](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/style.yml?branch=main&label=Code%20Style)](https://github.com/moeyk210/PackConnect/actions/workflows/style.yml?query=branch%3Amain)
 
 
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23543676.svg)](https://doi.org/10.5281/zenodo.23543676)
+[![Formatter](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/formatter.yml?branch=main&label=Formatter)](https://github.com/moeyk210/PackConnect/actions/workflows/formatter.yml?query=branch%3Amain)
+
+
+[![Syntax](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/syntax.yml?branch=main&label=Syntax)](https://github.com/moeyk210/PackConnect/actions/workflows/syntax.yml?query=branch%3Amain)
+
+
+
+[![Original project DOI](https://img.shields.io/badge/Original%20project%20%28Project%202%29%20DOI-10.5281%2Fzenodo.23543676-blue)](https://doi.org/10.5281/zenodo.23543676)
 
 
 
@@ -31,6 +31,75 @@ PackConnect is a student-to-student peer-advice discovery portal being developed
 > **Project status:** Early working prototype. The application includes account registration and persistent student profiles. Login uses password verification and session cookies. All application data persists in Supabase PostgreSQL; acceptance unlocks private two-person chat. Course histories remain self-reported.
 
 See the [Step 1 baseline audit](docs/STEP_1_AUDIT.md) for verified behavior, limitations, and outstanding work.
+
+## Project 3: what we changed
+
+PackConnect started as another team's Project 2,
+[KrishnaAttili10/PackConnect](https://github.com/KrishnaAttili10/PackConnect), by
+Krishna Attili, Sachith B, Atharva Tijare and Emma Saarinen. We forked it at
+commit `5d635c1` (October 29, 2026), the last commit on their `main`. Everything
+from `a313141` onward is our work:
+[compare the fork point with our `main`](https://github.com/moeyk210/PackConnect/compare/5d635c1...main).
+
+### What we inherited
+
+Registration and sign-in, student profiles, course search with filters, advisor
+availability limits, advice requests with cancellation and expiry, private chat
+that refreshed every three seconds, in-app notifications, a conversation inbox,
+block and report tools with moderation, password recovery, meeting proposals,
+and course-code suggestions drawn from students' own course histories. It had
+128 backend and 52 frontend tests, all passing in CI.
+
+### What we added
+
+| Milestone | Issue / PR | Lead | What works now that did not before |
+| --- | --- | --- | --- |
+| Advice outcomes and reputation | [#2](https://github.com/moeyk210/PackConnect/issues/2) / [#10](https://github.com/moeyk210/PackConnect/pull/10) | Moe Ko | Rate a conversation; advisor rating, students helped and response rate on search cards and profiles; the M0 eval and demo seed. See [feedback and reputation](#advice-feedback-reputation-and-m0-eval). |
+| Smart matching and ranking | [#3](https://github.com/moeyk210/PackConnect/issues/3) / [#14](https://github.com/moeyk210/PackConnect/pull/14) | Morgan Simon | Search ranked by fit instead of A-Z, near misses under "Outside your filters", "Recommended for you", and advice topics matched by meaning with a local model and pgvector. See [smart matching](docs/SMART_MATCHING.md). |
+| Course hub and catalog | [#4](https://github.com/moeyk210/PackConnect/issues/4) / [#15](https://github.com/moeyk210/PackConnect/pull/15) | Savanah Hendzel | A 162-course CSC catalog, one stored form for every course code, autocomplete by code or title, and course pages with ranked advisors and workload and difficulty ratings. See [course pages](docs/COURSE_PAGES.md). |
+| Real-time messaging | [#5](https://github.com/moeyk210/PackConnect/issues/5) / [#11](https://github.com/moeyk210/PackConnect/pull/11), [#16](https://github.com/moeyk210/PackConnect/pull/16) | Ethan Goodman | Chat, notifications, requests, the inbox and meetings update over WebSockets instead of polling, with read receipts, typing indicators and server-side session revocation. See [real-time messaging](docs/REALTIME_MESSAGING.md). |
+
+Supporting work: the backend reorganized into `core/`, `features/`, `scripts/`
+and `tests/` ([#7](https://github.com/moeyk210/PackConnect/pull/7)), varied
+development seed data and end-to-end tests
+([#17](https://github.com/moeyk210/PackConnect/pull/17)), and fixes
+([#8](https://github.com/moeyk210/PackConnect/pull/8),
+[#9](https://github.com/moeyk210/PackConnect/pull/9),
+[#12](https://github.com/moeyk210/PackConnect/pull/12),
+[#13](https://github.com/moeyk210/PackConnect/pull/13)). AI use is logged in
+[ai/AI_USAGE.md](ai/AI_USAGE.md).
+
+### How we know the old parts still work
+
+| Tests | At the fork (`5d635c1`) | Now |
+| --- | --- | --- |
+| Backend | 128 | 484 |
+| Frontend | 52 | 164 |
+
+Every inherited test file is still in the suite, and CI runs all of them on
+every push. Most edits to inherited tests follow the backend reorganization
+(import paths), real server-side sign-in, or new response fields. Five
+inherited tests for course-code suggestions were replaced when suggestions moved
+from students' course histories to the catalog
+([#15](https://github.com/moeyk210/PackConnect/pull/15)); 13 tests in
+`backend/tests/test_course_autocomplete.py` cover the new behavior.
+
+### M0
+
+The inherited project had no M0 eval; its own
+[baseline audit](docs/STEP_1_AUDIT.md) lists the M0 instrument as missing. Our
+claims and the instruments that measure them:
+
+| Claim | Instrument | Result |
+| --- | --- | --- |
+| More than 70% of accepted connections are rated helpful | `backend/scripts/m0_eval.py` (`--check` exits 1 if the claim fails) | 75.0% (9 of 12) on the demo seed: pass |
+| Ranked search puts the advisor who accepted in the top 3 more often than A-Z order | `backend/scripts/ranking_eval.py` | 42.9% vs 17.9% (24 vs 10 of 56) on a simulated semester |
+| Meaning-based topic matching finds the right advisor more often than shared words | `backend/scripts/topic_match_eval.py` | 86.7% vs 46.7% (26 vs 14 of 30 hand-written cases) |
+| Real-time push delivers chat faster than polling | `backend/scripts/benchmark_messaging.py` | Median 1444 ms to 50 ms; an idle open chat goes from about 45 requests a minute to 0 |
+
+These results come from demo, simulated or hand-written data, not real
+students. `m0_eval.py` and `ranking_eval.py` read whichever database they are
+given, so they can measure real students once there is enough history.
 
 ## Current features
 
