@@ -1,24 +1,24 @@
 # PackConnect — Peer Advice Portal
 
-[![Build](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/build.yml/badge.svg?branch=development)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/build.yml?query=branch%3Adevelopment)
+[![Build](https://github.com/moeyk210/PackConnect/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/moeyk210/PackConnect/actions/workflows/build.yml?query=branch%3Amain)
 
-[![Tests and Quality](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/ci.yml?branch=development&label=Tests%20%26%20Quality)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/ci.yml?query=branch%3Adevelopment)
+[![Tests and Quality](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/ci.yml?branch=main&label=Tests%20%26%20Quality)](https://github.com/moeyk210/PackConnect/actions/workflows/ci.yml?query=branch%3Amain)
 
-[![Coverage](https://codecov.io/gh/KrishnaAttili10/PackConnect/branch/development/graph/badge.svg)](https://app.codecov.io/gh/KrishnaAttili10/PackConnect/tree/development)
-
-
-[![Code Style](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/style.yml?branch=development&label=Code%20Style)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/style.yml?query=branch%3Adevelopment)
+[![Coverage](https://codecov.io/gh/moeyk210/PackConnect/branch/main/graph/badge.svg)](https://app.codecov.io/gh/moeyk210/PackConnect/tree/main)
 
 
-
-[![Formatter](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/formatter.yml?branch=development&label=Formatter)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/formatter.yml?query=branch%3Adevelopment)
-
-
-[![Syntax](https://img.shields.io/github/actions/workflow/status/KrishnaAttili10/PackConnect/syntax.yml?branch=development&label=Syntax)](https://github.com/KrishnaAttili10/PackConnect/actions/workflows/syntax.yml?query=branch%3Adevelopment)
+[![Code Style](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/style.yml?branch=main&label=Code%20Style)](https://github.com/moeyk210/PackConnect/actions/workflows/style.yml?query=branch%3Amain)
 
 
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23543676.svg)](https://doi.org/10.5281/zenodo.23543676)
+[![Formatter](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/formatter.yml?branch=main&label=Formatter)](https://github.com/moeyk210/PackConnect/actions/workflows/formatter.yml?query=branch%3Amain)
+
+
+[![Syntax](https://img.shields.io/github/actions/workflow/status/moeyk210/PackConnect/syntax.yml?branch=main&label=Syntax)](https://github.com/moeyk210/PackConnect/actions/workflows/syntax.yml?query=branch%3Amain)
+
+
+
+[![Original project DOI](https://img.shields.io/badge/Original%20project%20%28Project%202%29%20DOI-10.5281%2Fzenodo.23543676-blue)](https://doi.org/10.5281/zenodo.23543676)
 
 
 
