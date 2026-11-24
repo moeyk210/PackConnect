@@ -36,7 +36,7 @@ See the [Step 1 baseline audit](docs/STEP_1_AUDIT.md) for verified behavior, lim
 
 PackConnect started as another team's Project 2,
 [KrishnaAttili10/PackConnect](https://github.com/KrishnaAttili10/PackConnect), by
-Kireeti Attili, Atharva Tijare, saarinenemma and KrishnaAttili10. We forked it at
+Krishna Attili, Sachith B, Atharva Tijare and Emma Saarinen. We forked it at
 commit `5d635c1` (October 29, 2026), the last commit on their `main`. Everything
 from `a313141` onward is our work:
 [compare the fork point with our `main`](https://github.com/moeyk210/PackConnect/compare/5d635c1...main).
